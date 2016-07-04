@@ -1,0 +1,14 @@
+#pragma once
+
+#define BLOCK_X_SIZE 32
+#define BLOCK_Y_SIZE 8
+
+#define HALO_BLOCK_X_MINUS 0
+#define HALO_BLOCK_X_PLUS 0
+
+#define HALO_BLOCK_Y_MINUS 0
+#define HALO_BLOCK_Y_PLUS 0
+
+#define PADDED_BOUNDARY 0
+
+#define PADDING_LEFT 32-HALO_BLOCK_X_MINUS
