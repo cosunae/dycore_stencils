@@ -1,4 +1,5 @@
 #include "gtest/gtest.h"
+#include "defs.hpp"
 #include "../Options.hpp"
 #include "horizontal_diffusion.h"
 #include "../repository.hpp"

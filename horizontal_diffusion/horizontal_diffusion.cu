@@ -1,18 +1,8 @@
+#include "defs.hpp"
 #include "horizontal_diffusion.h"
 #include "../repository.hpp"
 #include "../utils.hpp"
 #include "horizontal_diffusion_reference.hpp"
-
-#define BLOCK_X_SIZE 32
-#define BLOCK_Y_SIZE 8
-
-#define HALO_BLOCK_X_MINUS 1
-#define HALO_BLOCK_X_PLUS 1
-
-#define HALO_BLOCK_Y_MINUS 1
-#define HALO_BLOCK_Y_PLUS 1
-
-#define PADDED_BOUNDARY 1
 
 inline __device__ unsigned int cache_index(const unsigned int ipos, const unsigned int jpos) {
     return (ipos + PADDED_BOUNDARY) +
@@ -75,9 +65,9 @@ __global__ void cukernel(
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
             lap[cache_index(iblock_pos, jblock_pos)] =
-                (Real)4 * __ldg(& in[index_] ) -
-                ( __ldg(& in[index_+index(1, 0,0, strides)] ) + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
-                    __ldg(&in[index_+index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, - 1, 0, strides)]));
+                (Real)4 * __ldg(&in[index_]) -
+                (__ldg(&in[index_ + index(1, 0, 0, strides)]) + __ldg(&in[index_ - index(1, 0, 0, strides)]) +
+                    __ldg(&in[index_ + index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, 1, 0, strides)]));
         }
 
         __syncthreads();
@@ -86,7 +76,7 @@ __global__ void cukernel(
             flx[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
+                    (__ldg(&in[index_ + index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -98,7 +88,7 @@ __global__ void cukernel(
             fly[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
+                    (__ldg(&in[index_ + index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -114,11 +104,11 @@ __global__ void cukernel(
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
-        index_ += index(0,0,1, strides);
+        index_ += index(0, 0, 1, strides);
     }
 }
 
-void launch_kernel(repository &repo, timer_cuda* time) {
+void launch_kernel(repository &repo, timer_cuda *time) {
     IJKSize domain = repo.domain();
     IJKSize halo = repo.halo();
 
@@ -132,13 +122,15 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     blocks.z = 1;
 
     IJKSize strides;
-    compute_strides(domain, strides);
+    compute_strides(domain, halo, strides);
 
     Real *in = repo.field_d("u_in");
     Real *out = repo.field_d("u_out");
     Real *coeff = repo.field_d("coeff");
 
-    if(time) time->start();
+    if (time)
+        time->start();
     cukernel<<< blocks, threads, 0 >>>(in, out, coeff, domain, halo, strides);
-    if(time) time->pause();
+    if (time)
+        time->pause();
 }

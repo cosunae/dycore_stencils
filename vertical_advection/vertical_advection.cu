@@ -1,19 +1,9 @@
+#include "defs.hpp"
 #include "vertical_advection.h"
 #include "../repository.hpp"
 #include "../utils.hpp"
 #include "vertical_advection_reference.hpp"
 #include "../timer_cuda.hpp"
-
-#define BLOCK_X_SIZE 32
-#define BLOCK_Y_SIZE 8
-
-#define HALO_BLOCK_X_MINUS 0
-#define HALO_BLOCK_X_PLUS 0
-
-#define HALO_BLOCK_Y_MINUS 0
-#define HALO_BLOCK_Y_PLUS 0
-
-#define PADDED_BOUNDARY 0
 
 inline __device__ unsigned int cache_index(const unsigned int ipos, const unsigned int jpos) {
     return (ipos + PADDED_BOUNDARY) +
@@ -178,7 +168,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     blocks.z = 1;
 
     IJKSize strides;
-    compute_strides(domain, strides);
+    compute_strides(domain, halo, strides);
 
     Real *u_stage = repo.field_d("u_stage");
     Real *wcon = repo.field_d("wcon");

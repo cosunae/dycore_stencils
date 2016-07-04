@@ -1,4 +1,5 @@
 #include "gtest/gtest.h"
+#include "defs.hpp"
 #include "../Options.hpp"
 #include "vertical_advection.h"
 #include "../repository.hpp"
