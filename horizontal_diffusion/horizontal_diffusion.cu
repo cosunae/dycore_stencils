@@ -23,23 +23,10 @@ inline __device__ unsigned int cache_index(const unsigned int ipos, const unsign
 //#define __restrict__
 
 __global__ void cukernel(
-    const Real  *__restrict__ _in, Real *__restrict__ _out, const Real *__restrict__ _coeff, const IJKSize domain, const IJKSize halo, const IJKSize _strides) {
+    const Real  *__restrict__ in, Real *__restrict__ out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo) {
 
     unsigned int ipos, jpos;
     int iblock_pos, jblock_pos;
-    __shared__ IJKSize strides;
-    __shared__ const Real *__restrict__ in;
-    __shared__ Real *__restrict__ out;
-    __shared__ const Real *__restrict__ coeff;
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        strides.m_i = _strides.m_i;
-        strides.m_j = _strides.m_j;
-        strides.m_k = _strides.m_k;
-        in = _in;
-        out = _out;
-        coeff = _coeff;
-    }
-    __syncthreads();
     const unsigned int jboundary_limit = BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS;
     const unsigned int iminus_limit = jboundary_limit + HALO_BLOCK_X_MINUS;
     const unsigned int iplus_limit = iminus_limit + HALO_BLOCK_X_PLUS;
@@ -69,7 +56,7 @@ __global__ void cukernel(
         jblock_pos = threadIdx.x / PADDED_BOUNDARY;
     }
 
-    int index_ = index(ipos, jpos, 0, strides);
+    int index_ = index(ipos, jpos, 0);
 
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
@@ -85,8 +72,8 @@ __global__ void cukernel(
 
             lap[cache_index(iblock_pos, jblock_pos)] =
                 (Real)4 * __ldg(& in[index_] ) -
-                ( __ldg(& in[index_+index(1, 0,0, strides)] ) + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
-                    __ldg(&in[index_+index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, 1, 0, strides)]));
+                ( __ldg(& in[index_+index(1, 0,0)] ) + __ldg(& in[index_ - index(1, 0,0)] ) +
+                    __ldg(&in[index_+index(0, 1, 0)]) + __ldg(&in[index_ - index(0, 1, 0)]));
         }
 
         __syncthreads();
@@ -95,7 +82,7 @@ __global__ void cukernel(
             flx[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
+                    (__ldg(&in[index_+index(1, 0, 0)]) - __ldg(&in[index_])) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -105,7 +92,7 @@ __global__ void cukernel(
             fly[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
+                    (__ldg(&in[index_+index(0, 1, 0)]) - __ldg(&in[index_])) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -121,7 +108,7 @@ __global__ void cukernel(
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
-        index_ += index(0,0,1, strides);
+        index_ += index(0,0,1);
     }
 }
 
@@ -146,6 +133,6 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     Real *coeff = repo.field_d("coeff");
 
     if(time) time->start();
-    cukernel<<< blocks, threads, 0 >>>(in, out, coeff, domain, halo, strides);
+    cukernel<<< blocks, threads, 0 >>>(in, out, coeff, domain, halo);
     if(time) time->pause();
 }
