@@ -9,7 +9,7 @@
 struct repository {
 
     repository(IJKSize domain, IJKSize halo)
-        : m_domain(domain), m_halo(halo), m_field_size(domain.m_i * domain.m_j * domain.m_k) {
+        : m_domain(domain), m_halo(halo), m_field_size((domain.m_i+halo.m_i*2) * (domain.m_j+halo.m_j*2) * domain.m_k) {
         compute_strides(m_domain, m_strides);
     }
 
@@ -39,9 +39,9 @@ struct repository {
 
     void fill_field(std::string name, Real offset1, Real offset2, Real base1, Real base2, Real spreadx, Real spready) {
         const unsigned int i_begin = 0;
-        const unsigned int i_end = m_domain.m_i;
+        const unsigned int i_end = m_domain.m_i+m_halo.m_i*2;
         const unsigned int j_begin = 0;
-        const unsigned int j_end = m_domain.m_j;
+        const unsigned int j_end = m_domain.m_j+m_halo.m_j*2;
         const unsigned int k_begin = 0;
         const unsigned int k_end = m_domain.m_k;
 
@@ -71,9 +71,9 @@ struct repository {
 
     void init_field(std::string name, Real value) {
         const unsigned int i_begin = 0;
-        const unsigned int i_end = m_domain.m_i;
+        const unsigned int i_end = m_domain.m_i+m_halo.m_i*2;
         const unsigned int j_begin = 0;
-        const unsigned int j_end = m_domain.m_j;
+        const unsigned int j_end = m_domain.m_j+m_halo.m_j*2;
         const unsigned int k_begin = 0;
         const unsigned int k_end = m_domain.m_k;
 

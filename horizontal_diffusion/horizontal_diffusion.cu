@@ -2,6 +2,7 @@
 #include "../repository.hpp"
 #include "../utils.hpp"
 #include "horizontal_diffusion_reference.hpp"
+#include "../functions.hpp"
 
 #define BLOCK_X_SIZE 32
 #define BLOCK_Y_SIZE 8
@@ -19,18 +20,27 @@ inline __device__ unsigned int cache_index(const unsigned int ipos, const unsign
            (jpos + HALO_BLOCK_Y_MINUS) * (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS);
 }
 
-template < int IMinusExtent, int IPlusExtent, int JMinusExtent, int JPlusExtent >
-__device__ inline bool is_in_domain(
-    const int iblock_pos, const int jblock_pos, const unsigned int block_size_i, const unsigned int block_size_j) {
-    return (iblock_pos >= IMinusExtent && iblock_pos < ((int)block_size_i + IPlusExtent) &&
-            jblock_pos >= JMinusExtent && jblock_pos < ((int)block_size_j + JPlusExtent));
-}
+//#define __restrict__
 
 __global__ void cukernel(
-    Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides_) {
+//    Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides_) {
+    const Real  *__restrict__ _in, Real *__restrict__ _out, const Real *__restrict__ _coeff, const IJKSize domain, const IJKSize halo, const IJKSize _strides) {
 
     unsigned int ipos, jpos;
     int iblock_pos, jblock_pos;
+    __shared__ IJKSize strides;
+    __shared__ const Real *__restrict__ in;
+    __shared__ Real *__restrict__ out;
+    __shared__ const Real *__restrict__ coeff;
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        strides.m_i = _strides.m_i;
+        strides.m_j = _strides.m_j;
+        strides.m_k = _strides.m_k;
+        in = _in;
+        out = _out;
+        coeff = _coeff;
+    }
+    __syncthreads();
     const unsigned int jboundary_limit = BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS;
     const unsigned int iminus_limit = jboundary_limit + HALO_BLOCK_X_MINUS;
     const unsigned int iplus_limit = iminus_limit + HALO_BLOCK_X_PLUS;
@@ -40,13 +50,6 @@ __global__ void cukernel(
     const unsigned int block_size_j =
         (blockIdx.y + 1) * BLOCK_Y_SIZE < domain.m_j ? BLOCK_Y_SIZE : domain.m_j - blockIdx.y * BLOCK_Y_SIZE;
 
-    __shared__ IJKSize strides;
-    if(threadIdx.x==0 && threadIdx.y==0) {
-        strides.m_i = strides_.m_i; 
-        strides.m_j = strides_.m_j;
-        strides.m_k = strides_.m_k;
-    }
-    __syncthreads();
     // set the thread position by default out of the block
     iblock_pos = -HALO_BLOCK_X_MINUS - 1;
     jblock_pos = -HALO_BLOCK_Y_MINUS - 1;
@@ -98,8 +101,6 @@ __global__ void cukernel(
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
         }
-
-        __syncthreads();
 
         if (is_in_domain< 0, 0, -1, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             fly[cache_index(iblock_pos, jblock_pos)] =
