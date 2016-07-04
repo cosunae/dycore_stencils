@@ -20,11 +20,26 @@ inline __device__ unsigned int cache_index(const unsigned int ipos, const unsign
            (jpos + HALO_BLOCK_Y_MINUS) * (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS);
 }
 
+//#define __restrict__
+
 __global__ void cukernel(
-    Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
+    const Real  *__restrict__ _in, Real *__restrict__ _out, const Real *__restrict__ _coeff, const IJKSize domain, const IJKSize halo, const IJKSize _strides) {
 
     unsigned int ipos, jpos;
     int iblock_pos, jblock_pos;
+    __shared__ IJKSize strides;
+    __shared__ const Real *__restrict__ in;
+    __shared__ Real *__restrict__ out;
+    __shared__ const Real *__restrict__ coeff;
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        strides.m_i = _strides.m_i;
+        strides.m_j = _strides.m_j;
+        strides.m_k = _strides.m_k;
+        in = _in;
+        out = _out;
+        coeff = _coeff;
+    }
+    __syncthreads();
     const unsigned int jboundary_limit = BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS;
     const unsigned int iminus_limit = jboundary_limit + HALO_BLOCK_X_MINUS;
     const unsigned int iplus_limit = iminus_limit + HALO_BLOCK_X_PLUS;
