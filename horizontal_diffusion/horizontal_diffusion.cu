@@ -27,7 +27,7 @@ __device__ inline bool is_in_domain(
 }
 
 __global__ void cukernel(
-    Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
+    Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides_) {
 
     unsigned int ipos, jpos;
     int iblock_pos, jblock_pos;
@@ -40,6 +40,13 @@ __global__ void cukernel(
     const unsigned int block_size_j =
         (blockIdx.y + 1) * BLOCK_Y_SIZE < domain.m_j ? BLOCK_Y_SIZE : domain.m_j - blockIdx.y * BLOCK_Y_SIZE;
 
+    __shared__ IJKSize strides;
+    if(threadIdx.x==0 && threadIdx.y==0) {
+        strides.m_i = strides_.m_i; 
+        strides.m_j = strides_.m_j;
+        strides.m_k = strides_.m_k;
+    }
+    __syncthreads();
     // set the thread position by default out of the block
     iblock_pos = -HALO_BLOCK_X_MINUS - 1;
     jblock_pos = -HALO_BLOCK_Y_MINUS - 1;
