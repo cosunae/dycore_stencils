@@ -4,7 +4,7 @@
 #include "horizontal_diffusion_reference.hpp"
 #include "../functions.hpp"
 
-#define BLOCK_X_SIZE 32
+#define BLOCK_X_SIZE 28
 #define BLOCK_Y_SIZE 8
 
 #define HALO_BLOCK_X_MINUS 1
@@ -15,9 +15,14 @@
 
 #define PADDED_BOUNDARY 1
 
+#define __ldg( a ) a
+// #define REF &
+#define REF
+
 inline __device__ unsigned int cache_index(const unsigned int ipos, const unsigned int jpos) {
     return (ipos + PADDED_BOUNDARY) +
-           (jpos + HALO_BLOCK_Y_MINUS) * (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS);
+           (jpos + HALO_BLOCK_Y_MINUS) * ( BLOCK_X_SIZE
+                                          + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS);
 }
 
 __global__ void cukernel(
@@ -59,7 +64,7 @@ __global__ void cukernel(
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
 // with same size. shared memory pressure should not be too high nevertheless
-#define CACHE_SIZE (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
+#define CACHE_SIZE ( BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
     __shared__ Real lap[CACHE_SIZE];
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
@@ -69,9 +74,9 @@ __global__ void cukernel(
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
             lap[cache_index(iblock_pos, jblock_pos)] =
-                (Real)4 * __ldg(& in[index_] ) -
-                ( __ldg(& in[index_+index(1, 0,0, strides)] ) + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
-                    __ldg(&in[index_+index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, 1, 0, strides)]));
+                (Real)4 * __ldg( REF in[index_] ) -
+                ( __ldg( REF in[index_+index(1, 0,0, strides)] ) + __ldg( REF in[index_ - index(1, 0,0, strides)] ) +
+                    __ldg( REF in[index_+index(0, 1, 0, strides)]) + __ldg( REF in[index_ - index(0, 1, 0, strides)]));
         }
 
         __syncthreads();
@@ -80,7 +85,7 @@ __global__ void cukernel(
             flx[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
+                    (__ldg( REF in[index_+index(1, 0, 0, strides)]) - __ldg( REF in[index_])) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -90,7 +95,7 @@ __global__ void cukernel(
             fly[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
+                    (__ldg( REF in[index_+index(0, 1, 0, strides)]) - __ldg( REF in[index_])) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -100,7 +105,7 @@ __global__ void cukernel(
 
         if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             out[index_] =
-                __ldg(&in[index_]) -
+                __ldg( REF in[index_]) -
                 coeff[index_] *
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
@@ -115,11 +120,13 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     IJKSize halo = repo.halo();
 
     dim3 threads, blocks;
-    threads.x = BLOCK_X_SIZE;
+    threads.x = 32// BLOCK_X_SIZE
+        ;
     threads.y = BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS + (HALO_BLOCK_X_MINUS > 0 ? 1 : 0) +
                 (HALO_BLOCK_X_PLUS > 0 ? 1 : 0);
     threads.z = 1;
-    blocks.x = (domain.m_i + BLOCK_X_SIZE - 1) / BLOCK_X_SIZE;
+    blocks.x = (domain.m_i + BLOCK_X_SIZE - 1) /  BLOCK_X_SIZE
+        ;
     blocks.y = (domain.m_j + BLOCK_Y_SIZE - 1) / BLOCK_Y_SIZE;
     blocks.z = 1;
 
