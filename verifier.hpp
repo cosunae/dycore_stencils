@@ -21,7 +21,7 @@ struct verifier {
     IJKSize m_strides;
     double m_precision;
     verifier(IJKSize domain, IJKSize halo, double precision) : m_domain(domain), m_halo(halo), m_precision(precision) {
-        compute_strides(m_domain, m_strides);
+        compute_strides(m_domain, halo, m_strides);
     }
 
     bool verify(Real* expected_field, Real* actual_field)
@@ -45,4 +45,3 @@ struct verifier {
         return verified;
     }
 };
-

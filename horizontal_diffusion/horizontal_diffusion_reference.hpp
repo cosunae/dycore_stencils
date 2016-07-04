@@ -28,7 +28,7 @@ struct horizontal_diffusion_reference {
         IJKSize halo = m_repo.halo();
         IJKSize strides;
 
-        compute_strides(domain, strides);
+        compute_strides(domain, halo, strides);
         for (unsigned int k = 0; k < domain.m_k; ++k) {
             for (unsigned int i = halo.m_i - 1; i < domain.m_i - halo.m_i + 1; ++i) {
                 for (unsigned int j = halo.m_j - 1; j < domain.m_j - halo.m_j + 1; ++j) {

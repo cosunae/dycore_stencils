@@ -5,7 +5,7 @@
 struct vertical_advection_reference {
 
     vertical_advection_reference(repository &repo) : m_repo(repo), m_domain(repo.domain()), m_halo(repo.halo()) {
-        compute_strides(m_domain, m_strides);
+        compute_strides(m_domain, m_halo, m_strides);
     }
 
     void generate_reference() {

@@ -178,7 +178,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     blocks.z = 1;
 
     IJKSize strides;
-    compute_strides(domain, strides);
+    compute_strides(domain, halo, strides);
 
     Real *u_stage = repo.field_d("u_stage");
     Real *wcon = repo.field_d("wcon");

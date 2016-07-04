@@ -139,7 +139,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     blocks.z = 1;
 
     IJKSize strides;
-    compute_strides(domain, strides);
+    compute_strides(domain, halo, strides);
 
     Real *in = repo.field_d("u_in");
     Real *out = repo.field_d("u_out");
