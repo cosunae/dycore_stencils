@@ -31,6 +31,9 @@ struct repository {
     }
     void update_host(std::string name) {
         cudaMemcpy(field_h(name), field_d(name), m_field_size * sizeof(Real), cudaMemcpyDeviceToHost);
+        // for(int i = 0; i<m_field_size; ++i)
+        //     std::cout<<m_fields_h[name][i]<<" ";
+        // std::cout<<std::endl<<std::endl<<std::endl;
     }
 
     void update_device(std::string name) {

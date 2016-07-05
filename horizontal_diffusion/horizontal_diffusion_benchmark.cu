@@ -65,6 +65,7 @@ TEST(HorizontalDiffusion, Test) {
     repo.update_host("u_out");
     verifier verif(domain, halo, 1e-11);
     ASSERT_TRUE(verif.verify(repo.field_h("u_diff_ref"), repo.field_h("u_out")));
+    // ASSERT_TRUE(verif.verify(repo.field_h("u_in"), repo.field_h("u_out")));
 
     timer_cuda time("vertical_advection");
     for(unsigned int i=0; i < cNumBenchmarkRepetitions; ++i)
