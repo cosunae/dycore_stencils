@@ -6,6 +6,7 @@
 
 #define BLOCK_X_SIZE 32
 #define BLOCK_Y_SIZE 8
+#define BLOCK_Z_SIZE 4
 
 #define HALO_BLOCK_X_MINUS 1
 #define HALO_BLOCK_X_PLUS 1
@@ -53,8 +54,8 @@ __global__ void cukernel(
         iblock_pos = threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE;
         jblock_pos = threadIdx.x / PADDED_BOUNDARY;
     }
-
-    int index_ = index(ipos, jpos, 0, strides);
+    
+    int index_ = index(ipos, jpos, (BLOCK_Z_SIZE*blockIdx.z), strides);
 
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
@@ -64,7 +65,7 @@ __global__ void cukernel(
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
 
-    for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+    for (int kpos = 0; kpos < BLOCK_Z_SIZE; ++kpos) {
 
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
@@ -121,7 +122,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     threads.z = 1;
     blocks.x = (domain.m_i + BLOCK_X_SIZE - 1) / BLOCK_X_SIZE;
     blocks.y = (domain.m_j + BLOCK_Y_SIZE - 1) / BLOCK_Y_SIZE;
-    blocks.z = 1;
+    blocks.z = (domain.m_k + BLOCK_Z_SIZE - 1) / BLOCK_Z_SIZE;
 
     IJKSize strides;
     compute_strides(domain, halo, strides);
