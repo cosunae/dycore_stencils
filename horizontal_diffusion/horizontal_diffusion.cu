@@ -99,26 +99,6 @@ __global__ void cukernel(
 
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
 
-    if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
-    in_cache[cache_index_in(iblock_pos, jblock_pos)] = __ldg(& in[index_] );
-    if( threadIdx.y == 0) {
-        in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = __ldg(& in[index_ - index(0,1,0,strides)] );
-    }
-    else if(threadIdx.y == jboundary_limit-1) {
-        in_cache[cache_index_in(iblock_pos, jblock_pos+1)] = __ldg(& in[index_ + index(0,1,0,strides)] );
-   }
-    else if(threadIdx.y == jboundary_limit) {
-        in_cache[cache_index_in(iblock_pos-1, jblock_pos)] = __ldg(& in[index_ - index(1,0,0,strides)] );
-    }
-    else if(threadIdx.y == jboundary_limit+1) {
-        in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = __ldg(& in[index_ + index(1,0,0,strides)] );
-    }
-    
-    }
-    __syncthreads();
-
-/*
-
         if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
         in_ref[0] = __ldg(& in[index_ + index(0, 0, 1, strides)] );
     if( threadIdx.y == 0) {
@@ -135,7 +115,8 @@ __global__ void cukernel(
     }
 
         }
-*/
+
+        //__syncthreads();
 
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
@@ -178,10 +159,11 @@ __global__ void cukernel(
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
-/*
+__syncthreads();
+        
             if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
-    in_cache[cache_index(iblock_pos, jblock_pos)] = in_ref[0];
+    in_cache[cache_index_in(iblock_pos, jblock_pos)] = in_ref[0];
     if( threadIdx.y == 0) {
         in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = in_ref[1];
     }
@@ -195,7 +177,7 @@ __global__ void cukernel(
         in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = in_ref[1];
     }
     }
-    */
+    
         __syncthreads();
 
         index_ += index(0,0,1, strides);
