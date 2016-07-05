@@ -75,7 +75,7 @@ __global__ void cukernel(
     __shared__ Real fly[CACHE_SIZE];
 
     __shared__ Real in_cache[CACHE_SIZE_IN];
-
+/*
     Real in_ref[2];
 
     if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
@@ -96,89 +96,98 @@ __global__ void cukernel(
     }
 
     __syncthreads();
-
+*/
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
 
-        if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
-        in_ref[0] = __ldg(& in[index_ + index(0, 0, 1, strides)] );
+    if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+    in_cache[cache_index_in(iblock_pos, jblock_pos)] = __ldg(& in[index_] );
     if( threadIdx.y == 0) {
-        in_ref[1] = __ldg(& in[index_ - index(0,1,0, strides) + index(0,0,1,strides)] );
+        in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = __ldg(& in[index_ - index(0,1,0,strides)] );
     }
     else if(threadIdx.y == jboundary_limit-1) {
-        in_ref[1] = __ldg(& in[index_ + index(0,1,1,strides)] );
-    }
+        in_cache[cache_index_in(iblock_pos, jblock_pos+1)] = __ldg(& in[index_ + index(0,1,0,strides)] );
+   }
     else if(threadIdx.y == jboundary_limit) {
-        in_ref[1] = __ldg(& in[index_ - index(1,0,0, strides) +index(0,0,1,strides)] );
+        in_cache[cache_index_in(iblock_pos-1, jblock_pos)] = __ldg(& in[index_ - index(1,0,0,strides)] );
     }
     else if(threadIdx.y == jboundary_limit+1) {
-        in_ref[1] = __ldg(& in[index_ + index(1,0,1,strides)] );
+        in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = __ldg(& in[index_ + index(1,0,0,strides)] );
+    }
+    
     }
 
+         
+        __syncthreads();
+
+        Real in_c, in_c_ip1, in_c_im1, in_c_jp1, in_c_jm1;
+
+        if( is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j) ) {
+         in_c = in_cache[cache_index_in(iblock_pos, jblock_pos)];
+         in_c_ip1 = in_cache[cache_index_in(iblock_pos+1, jblock_pos)];
+         in_c_im1 = in_cache[cache_index_in(iblock_pos-1, jblock_pos)];
+         in_c_jp1 = in_cache[cache_index_in(iblock_pos, jblock_pos+1)];
+         in_c_jm1 = in_cache[cache_index_in(iblock_pos, jblock_pos-1)];
         }
 
-        //__syncthreads();
-
+        Real lap_c, lap_ip1, lap_jp1;
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
+
             lap[cache_index(iblock_pos, jblock_pos)] =
-                (Real)4 * in_cache[cache_index_in(iblock_pos, jblock_pos)] -
-                ( in_cache[cache_index_in(iblock_pos+1, jblock_pos)] + in_cache[cache_index_in(iblock_pos-1, jblock_pos)] +
-                    in_cache[cache_index_in(iblock_pos, jblock_pos+1)] + in_cache[cache_index_in(iblock_pos, jblock_pos-1)]);
+                (Real)4 * in_c -
+                ( in_c_ip1 + in_c_im1 +
+                    in_c_jp1 + in_c_jm1);
         }
 
         __syncthreads();
+
+        if(is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+          lap_c = lap[cache_index(iblock_pos, jblock_pos)];
+          lap_ip1 = lap[cache_index(iblock_pos+1, jblock_pos)];
+           lap_jp1 = lap[cache_index(iblock_pos, jblock_pos+1)];
+
+        }
+
+        Real flx_c;
+        Real flx_im1;
 
         if (is_in_domain< -1, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             flx[cache_index(iblock_pos, jblock_pos)] =
-                lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
+                lap_ip1 - lap_c;
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    ( in_cache[cache_index_in(iblock_pos+1, jblock_pos)] - 
-                      in_cache[ cache_index_in(iblock_pos, jblock_pos)]) >
+                    ( in_c_ip1 - 
+                      in_c) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
+            flx_c = flx[cache_index(iblock_pos, jblock_pos)];
         }
 
+        Real fly_c; 
+        Real fly_im1;
         if (is_in_domain< 0, 0, -1, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             fly[cache_index(iblock_pos, jblock_pos)] =
-                lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
+                lap_jp1 - lap_c;
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    ( in_cache[cache_index_in(iblock_pos, jblock_pos+1)] - in_cache[cache_index_in(iblock_pos, jblock_pos)]) >
+                    ( in_c_jp1 - in_c) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
+            fly_c = fly[cache_index(iblock_pos, jblock_pos)];
         }
 
         __syncthreads();
 
+        flx_im1 = flx[cache_index(iblock_pos-1, jblock_pos)];
+        fly_im1 = fly[cache_index(iblock_pos-1, jblock_pos)];
         if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             out[index_] =
-                in_cache[cache_index_in(iblock_pos, jblock_pos)] -
+                in_c -
                 coeff[index_] *
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
-__syncthreads();
-        
-            if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
-
-    in_cache[cache_index_in(iblock_pos, jblock_pos)] = in_ref[0];
-    if( threadIdx.y == 0) {
-        in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = in_ref[1];
-    }
-    else if(threadIdx.y == jboundary_limit-1) {
-        in_cache[cache_index_in(iblock_pos, jblock_pos+1)] = in_ref[1];
-    }
-    else if(threadIdx.y == jboundary_limit) {
-        in_cache[cache_index_in(iblock_pos-1, jblock_pos)] = in_ref[1];
-    }
-    else if(threadIdx.y == jboundary_limit+1) {
-        in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = in_ref[1];
-    }
-    }
-    
-        __syncthreads();
 
         index_ += index(0,0,1, strides);
     }
