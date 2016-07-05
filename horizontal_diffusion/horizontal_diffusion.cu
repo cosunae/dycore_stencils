@@ -15,9 +15,9 @@
 
 #define PADDED_BOUNDARY 1
 
-#define __ldg( a ) a
-// #define REF &
-#define REF
+// #define __ldg( a ) a
+#define REF &
+// #define REF
 
 inline __device__ unsigned int cache_index(const unsigned int ipos, const unsigned int jpos) {
     return (ipos) +
@@ -50,80 +50,93 @@ __global__ void cukernel(
     __shared__ Real lap[CACHE_SIZE];
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
-    Real coeff_rp1, coeff_r;
+    Real // coeff_rp1,
+        // coeff_r,
+        in_reg_;
 
-    if (ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
-        coeff_rp1 = coeff[index_];
-    }
+    // if (ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
+    //     coeff_rp1 = __ldg(REF coeff[index_]);
+    // }
 
-    for (int kpos = 0; kpos < domain.m_k; ++kpos) {
-        // if ( ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<30 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
-        //     coeff_r = coeff_rp1;
-        //     if( kpos<domain.m_k-1 )
-        //         coeff_rp1 = coeff[index_+index(0,0,1,strides)];
-        // }
+    if( ipos < domain.m_i && jpos < domain.m_j ){
+        // in_s[cache_index_in(threadIdx.x, threadIdx.y)] = __ldg(REF in[index_]);
+        // __syncthreads();
+        // in_s[cache_index_in(threadIdx.x, threadIdx.y)] = __ldg(REF in[index_]);
+        // __syncthreads();
 
-        // if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
-        if( ipos < domain.m_i && jpos < domain.m_j )
+        for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+            // if ( ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<30 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
+            //     coeff_r = coeff_rp1;
+            //     if( kpos<domain.m_k-1 )
+            //         coeff_rp1 = __ldg(REF coeff[index_+index(0,0,1,strides)]);
+            // }
+
+            // if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+
+            // }
             in_s[cache_index_in(threadIdx.x, threadIdx.y)] = __ldg(REF in[index_]);
-        // }
-        __syncthreads();
+            __syncthreads();
 
-        Real in_reg_ = __ldg(REF in[index_ - index(1, 0, 1, strides)]);
+            // in_s[cache_index_in(threadIdx.x, threadIdx.y)] = __ldg(REF in[index_]); //in_reg_;
+            // __syncthreads();
 
-        if (// is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j
-            ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0 && threadIdx.x<BLOCK_X_SIZE+3 && threadIdx.y>0 && threadIdx.y<BLOCK_Y_SIZE+3) {
+            if(kpos < domain.m_k-1)
+                in_reg_ = __ldg(REF in[index_ + index(0, 0, 1, strides)]);
 
-            lap[cache_index(threadIdx.x, threadIdx.y)] =
-                (Real)4 * __ldg( REF in[index_] ) -
-                ( in_s[cache_index_in(threadIdx.x+1, threadIdx.y)] + in_s[cache_index_in(threadIdx.x-1, threadIdx.y)] +
-                    in_s[cache_index_in(threadIdx.x, threadIdx.y+1)] + in_s[cache_index_in(threadIdx.x, threadIdx.y-1)]);
-        }
+            if (ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0 && threadIdx.x<BLOCK_X_SIZE+3 && threadIdx.y>0 && threadIdx.y<BLOCK_Y_SIZE+3) {
 
-        __syncthreads();
-
-        if (//is_in_domain< -1, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)
-            ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>0+1 && threadIdx.y<BLOCK_Y_SIZE+3-1 ) {
-            flx[cache_index(threadIdx.x, threadIdx.y)] =
-                lap[cache_index(threadIdx.x+1, threadIdx.y)] - lap[cache_index(threadIdx.x, threadIdx.y)];
-            if (flx[cache_index(threadIdx.x, threadIdx.y)] *
-                (in_s[cache_index_in(threadIdx.x+1, threadIdx.y)] - in_s[cache_index_in(threadIdx.x, threadIdx.y)]) >
-                0) {
-                flx[cache_index(threadIdx.x, threadIdx.y)] = 0.;
+                lap[cache_index(threadIdx.x, threadIdx.y)] =
+                    (Real)4 * __ldg( REF in[index_] ) -
+                    ( in_s[cache_index_in(threadIdx.x+1, threadIdx.y)] + in_s[cache_index_in(threadIdx.x-1, threadIdx.y)] +
+                      in_s[cache_index_in(threadIdx.x, threadIdx.y+1)] + in_s[cache_index_in(threadIdx.x, threadIdx.y-1)]);
             }
-        }
 
-        if (//is_in_domain< 0, 0, -1, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)
-            ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0*+1 && threadIdx.x<BLOCK_X_SIZE+3-1 && threadIdx.y>0 && threadIdx.y<BLOCK_Y_SIZE+2) {
-            fly[cache_index(threadIdx.x, threadIdx.y)] =
-                lap[cache_index(threadIdx.x, threadIdx.y + 1)] - lap[cache_index(threadIdx.x, threadIdx.y)];
-            if (fly[cache_index(threadIdx.x, threadIdx.y)] *
-                (in_s[cache_index_in(threadIdx.x, threadIdx.y+1)] - in_s[cache_index_in(threadIdx.x, threadIdx.y)]) >
-                0) {
-                fly[cache_index(threadIdx.x, threadIdx.y)] = 0.;
+            __syncthreads();
+
+            if (//is_in_domain< -1, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)
+                ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>0+1 && threadIdx.y<BLOCK_Y_SIZE+3-1 ) {
+                flx[cache_index(threadIdx.x, threadIdx.y)] =
+                    lap[cache_index(threadIdx.x+1, threadIdx.y)] - lap[cache_index(threadIdx.x, threadIdx.y)];
+                if (flx[cache_index(threadIdx.x, threadIdx.y)] *
+                    (in_s[cache_index_in(threadIdx.x+1, threadIdx.y)] - in_s[cache_index_in(threadIdx.x, threadIdx.y)]) >
+                    0) {
+                    flx[cache_index(threadIdx.x, threadIdx.y)] = 0.;
+                }
             }
-        }
 
-        __syncthreads();
+            if (//is_in_domain< 0, 0, -1, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)
+                ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0*+1 && threadIdx.x<BLOCK_X_SIZE+3-1 && threadIdx.y>0 && threadIdx.y<BLOCK_Y_SIZE+2) {
+                fly[cache_index(threadIdx.x, threadIdx.y)] =
+                    lap[cache_index(threadIdx.x, threadIdx.y + 1)] - lap[cache_index(threadIdx.x, threadIdx.y)];
+                if (fly[cache_index(threadIdx.x, threadIdx.y)] *
+                    (in_s[cache_index_in(threadIdx.x, threadIdx.y+1)] - in_s[cache_index_in(threadIdx.x, threadIdx.y)]) >
+                    0) {
+                    fly[cache_index(threadIdx.x, threadIdx.y)] = 0.;
+                }
+            }
 
-        if (// is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)
-            ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
-            // printf("i: %d, j: %d => %d \n", ipos, jpos, index_);
-            out[index_] =
-                in_s[cache_index_in(threadIdx.x, threadIdx.y)] -
-                // coeff_r
-                coeff[index_]
-                *
+            __syncthreads();
+
+            if (// is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)
+                ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
+                // printf("i: %d, j: %d => %d \n", ipos, jpos, index_);
+                out[index_] =
+                    in_s[cache_index_in(threadIdx.x, threadIdx.y)] -
+                    __ldg(REF coeff[index_])
+                    *
                     (flx[cache_index(threadIdx.x, threadIdx.y)] - flx[cache_index(threadIdx.x-1, threadIdx.y)] +
-                        fly[cache_index(threadIdx.x, threadIdx.y)] - fly[cache_index(threadIdx.x, threadIdx.y - 1)]);
-        }
-        // if( ipos < domain.m_i && jpos < domain.m_j )
-        // {
-        //     printf("ipos %d, jpos %d, index_ %d, cache_index %d \n", ipos, jpos, index_, cache_index_in(threadIdx.x, threadIdx.y));
-        //     out[index_] = in_s[cache_index_in(iblock_pos, jblock_pos)];
-        // }
+                     fly[cache_index(threadIdx.x, threadIdx.y)] - fly[cache_index(threadIdx.x, threadIdx.y - 1)]);
+            }
+            in_s[cache_index_in(threadIdx.x, threadIdx.y)] = in_reg_;
+            // if( ipos < domain.m_i && jpos < domain.m_j )
+            // {
+            //     printf("ipos %d, jpos %d, index_ %d, cache_index %d \n", ipos, jpos, index_, cache_index_in(threadIdx.x, threadIdx.y));
+            //     out[index_] = in_s[cache_index_in(iblock_pos, jblock_pos)];
+            // }
 
-        index_ += index(0,0,1, strides);
+            index_ += index(0,0,1, strides);
+
+        }
     }
 }
 
