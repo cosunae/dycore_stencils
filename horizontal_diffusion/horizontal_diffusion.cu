@@ -15,10 +15,21 @@
 
 #define PADDED_BOUNDARY 1
 
-inline __device__ unsigned int cache_index(const unsigned int ipos, const unsigned int jpos) {
+#define CACHE_SIZE (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
+#define CACHE_SIZE_IN (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS+4) * (BLOCK_Y_SIZE + 2+4)
+
+
+
+inline __device__ unsigned int cache_index(const int ipos, const int jpos) {
     return (ipos + PADDED_BOUNDARY) +
            (jpos + HALO_BLOCK_Y_MINUS) * (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS);
 }
+
+ __device__ unsigned int cache_index_in(const int ipos, const int jpos) {
+    return (ipos + PADDED_BOUNDARY+1) +
+           (jpos + HALO_BLOCK_Y_MINUS+1) * (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS+2);
+}
+
 
 __global__ void cukernel(
     Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
@@ -35,8 +46,8 @@ __global__ void cukernel(
         (blockIdx.y + 1) * BLOCK_Y_SIZE < domain.m_j ? BLOCK_Y_SIZE : domain.m_j - blockIdx.y * BLOCK_Y_SIZE;
 
     // set the thread position by default out of the block
-    iblock_pos = -HALO_BLOCK_X_MINUS - 1;
-    jblock_pos = -HALO_BLOCK_Y_MINUS - 1;
+    iblock_pos = -HALO_BLOCK_X_MINUS - 6;
+    jblock_pos = -HALO_BLOCK_Y_MINUS - 6;
     if (threadIdx.y < jboundary_limit) {
         ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x + halo.m_i;
         jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y - HALO_BLOCK_Y_MINUS + halo.m_j;
@@ -59,19 +70,79 @@ __global__ void cukernel(
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
 // with same size. shared memory pressure should not be too high nevertheless
-#define CACHE_SIZE (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
     __shared__ Real lap[CACHE_SIZE];
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
 
+    __shared__ Real in_cache[CACHE_SIZE_IN];
+
+    Real in_ref[2];
+
+    if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+    in_cache[cache_index_in(iblock_pos, jblock_pos)] = __ldg(& in[index_] );
+    if( threadIdx.y == 0) {
+        in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = __ldg(& in[index_ - index(0,1,0,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit-1) {
+        in_cache[cache_index_in(iblock_pos, jblock_pos+1)] = __ldg(& in[index_ + index(0,1,0,strides)] );
+   }
+    else if(threadIdx.y == jboundary_limit) {
+        in_cache[cache_index_in(iblock_pos-1, jblock_pos)] = __ldg(& in[index_ - index(1,0,0,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit+1) {
+        in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = __ldg(& in[index_ + index(1,0,0,strides)] );
+    }
+    
+    }
+
+    __syncthreads();
+
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+
+    if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+    in_cache[cache_index_in(iblock_pos, jblock_pos)] = __ldg(& in[index_] );
+    if( threadIdx.y == 0) {
+        in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = __ldg(& in[index_ - index(0,1,0,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit-1) {
+        in_cache[cache_index_in(iblock_pos, jblock_pos+1)] = __ldg(& in[index_ + index(0,1,0,strides)] );
+   }
+    else if(threadIdx.y == jboundary_limit) {
+        in_cache[cache_index_in(iblock_pos-1, jblock_pos)] = __ldg(& in[index_ - index(1,0,0,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit+1) {
+        in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = __ldg(& in[index_ + index(1,0,0,strides)] );
+    }
+    
+    }
+    __syncthreads();
+
+/*
+
+        if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+        in_ref[0] = __ldg(& in[index_ + index(0, 0, 1, strides)] );
+    if( threadIdx.y == 0) {
+        in_ref[1] = __ldg(& in[index_ - index(0,1,0, strides) + index(0,0,1,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit-1) {
+        in_ref[1] = __ldg(& in[index_ + index(0,1,1,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit) {
+        in_ref[1] = __ldg(& in[index_ - index(1,0,0, strides) +index(0,0,1,strides)] );
+    }
+    else if(threadIdx.y == jboundary_limit+1) {
+        in_ref[1] = __ldg(& in[index_ + index(1,0,1,strides)] );
+    }
+
+        }
+*/
 
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
             lap[cache_index(iblock_pos, jblock_pos)] =
-                (Real)4 * __ldg(& in[index_] ) -
-                ( __ldg(& in[index_+index(1, 0,0, strides)] ) + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
-                    __ldg(&in[index_+index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, 1, 0, strides)]));
+                (Real)4 * in_cache[cache_index_in(iblock_pos, jblock_pos)] -
+                ( in_cache[cache_index_in(iblock_pos+1, jblock_pos)] + in_cache[cache_index_in(iblock_pos-1, jblock_pos)] +
+                    in_cache[cache_index_in(iblock_pos, jblock_pos+1)] + in_cache[cache_index_in(iblock_pos, jblock_pos-1)]);
         }
 
         __syncthreads();
@@ -80,7 +151,8 @@ __global__ void cukernel(
             flx[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
+                    ( in_cache[cache_index_in(iblock_pos+1, jblock_pos)] - 
+                      in_cache[ cache_index_in(iblock_pos, jblock_pos)]) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -90,7 +162,7 @@ __global__ void cukernel(
             fly[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
+                    ( in_cache[cache_index_in(iblock_pos, jblock_pos+1)] - in_cache[cache_index_in(iblock_pos, jblock_pos)]) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -100,14 +172,35 @@ __global__ void cukernel(
 
         if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             out[index_] =
-                __ldg(&in[index_]) -
+                in_cache[cache_index_in(iblock_pos, jblock_pos)] -
                 coeff[index_] *
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
+/*
+            if (is_in_domain< -2, 2, -2, 2 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+
+    in_cache[cache_index(iblock_pos, jblock_pos)] = in_ref[0];
+    if( threadIdx.y == 0) {
+        in_cache[cache_index_in(iblock_pos, jblock_pos-1)] = in_ref[1];
+    }
+    else if(threadIdx.y == jboundary_limit-1) {
+        in_cache[cache_index_in(iblock_pos, jblock_pos+1)] = in_ref[1];
+    }
+    else if(threadIdx.y == jboundary_limit) {
+        in_cache[cache_index_in(iblock_pos-1, jblock_pos)] = in_ref[1];
+    }
+    else if(threadIdx.y == jboundary_limit+1) {
+        in_cache[cache_index_in(iblock_pos+1, jblock_pos)] = in_ref[1];
+    }
+    }
+    */
+        __syncthreads();
+
         index_ += index(0,0,1, strides);
     }
+   
 }
 
 void launch_kernel(repository &repo, timer_cuda* time) {
