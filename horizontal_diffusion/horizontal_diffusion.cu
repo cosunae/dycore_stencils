@@ -60,27 +60,37 @@ __global__ void cukernel(
 // defined them here
 // with same size. shared memory pressure should not be too high nevertheless
 #define CACHE_SIZE (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
+#define CACHE_SIZE_IN ( BLOCK_X_SIZE+2 + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE+4)
+    __shared__ Real in_s[CACHE_SIZE_IN];
     __shared__ Real lap[CACHE_SIZE];
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
 
+    Real in_ip1,
+        in_jp1,
+        in_reg_,
+        in_center,
+        lap_center;
+
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
 
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
-
-            lap[cache_index(iblock_pos, jblock_pos)] =
-                (Real)4 * __ldg(& in[index_] ) -
-                ( __ldg(& in[index_+index(1, 0,0, strides)] ) + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
-                    __ldg(&in[index_+index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, 1, 0, strides)]));
+            in_center = __ldg(& in[index_]);
+            in_ip1 = __ldg(& in[index_ + index(1, 0,0, strides)] );
+            in_jp1 = __ldg(& in[index_ + index(0, 1,0, strides)] );
+            lap[cache_index(iblock_pos, jblock_pos)] = lap_center =
+                (Real)4 * in_center -
+                ( in_ip1 + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
+                    in_jp1 + __ldg(&in[index_ - index(0, 1, 0, strides)]));
         }
 
         __syncthreads();
 
         if (is_in_domain< -1, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             flx[cache_index(iblock_pos, jblock_pos)] =
-                lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
+                lap[cache_index(iblock_pos + 1, jblock_pos)] - lap_center;
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
+                    (in_ip1 - in_center) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -88,9 +98,9 @@ __global__ void cukernel(
 
         if (is_in_domain< 0, 0, -1, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             fly[cache_index(iblock_pos, jblock_pos)] =
-                lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
+                lap[cache_index(iblock_pos, jblock_pos + 1)] - lap_center;
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
+                    (in_jp1 - in_center) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -100,7 +110,7 @@ __global__ void cukernel(
 
         if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             out[index_] =
-                __ldg(&in[index_]) -
+                in_center -
                 coeff[index_] *
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
@@ -129,6 +139,8 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     Real *in = repo.field_d("u_in");
     Real *out = repo.field_d("u_out");
     Real *coeff = repo.field_d("coeff");
+
+    cudaFuncSetSharedMemConfig(cukernel, cudaSharedMemBankSizeEightByte);
 
     if(time) time->start();
     cukernel<<< blocks, threads, 0 >>>(in, out, coeff, domain, halo, strides);
