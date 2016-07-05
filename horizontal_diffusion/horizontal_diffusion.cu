@@ -42,16 +42,16 @@ __global__ void cukernel(
         jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y - HALO_BLOCK_Y_MINUS + halo.m_j;
         iblock_pos = threadIdx.x;
         jblock_pos = threadIdx.y - HALO_BLOCK_Y_MINUS;
-    } else if (threadIdx.y < iminus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
+    } else if (threadIdx.y < iminus_limit && threadIdx.x < (BLOCK_Y_SIZE+HALO_BLOCK_Y_MINUS+HALO_BLOCK_Y_PLUS) * PADDED_BOUNDARY) {
         ipos = blockIdx.x * BLOCK_X_SIZE - PADDED_BOUNDARY + threadIdx.x % PADDED_BOUNDARY + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
+        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j - HALO_BLOCK_Y_MINUS;
         iblock_pos = -PADDED_BOUNDARY + (int)threadIdx.x % PADDED_BOUNDARY;
-        jblock_pos = threadIdx.x / PADDED_BOUNDARY;
-    } else if (threadIdx.y < iplus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
+        jblock_pos = threadIdx.x / PADDED_BOUNDARY - HALO_BLOCK_Y_MINUS;
+    } else if (threadIdx.y < iplus_limit && threadIdx.x < (BLOCK_Y_SIZE+HALO_BLOCK_Y_MINUS+HALO_BLOCK_Y_PLUS) * PADDED_BOUNDARY) {
         ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
+        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j - HALO_BLOCK_Y_MINUS;
         iblock_pos = threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE;
-        jblock_pos = threadIdx.x / PADDED_BOUNDARY;
+        jblock_pos = threadIdx.x / PADDED_BOUNDARY - HALO_BLOCK_Y_MINUS;
     }
 
     int index_ = index(ipos, jpos, 0, strides);
