@@ -8,28 +8,46 @@ GT_FUNCTION void backward_sweep(const unsigned int i,
     const int jblock_pos,
     const unsigned int block_size_i,
     const unsigned int block_size_j,
-    Real *ccol,
-    Real *dcol,
-    Real *datacol,
-    Real *u_pos,
-    Real *utens_stage_ref,
+    Real const *__restrict__ ccol,
+    Real const *__restrict__ dcol,
+    Real *__restrict__ datacol,
+    Real const *__restrict__ u_pos,
+    Real *__restrict__ utens_stage_ref,
     IJKSize const &domain,
     IJKSize const &strides) {
     // k maximum
     int k = domain.m_k - 1;
+
+#if USE_CACHE_
+    Real datacol_cache[2];
+#endif
+
     if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
-        datacol[index(i, j, k, strides)] = dcol[index(i, j, k, strides)];
+#if USE_CACHE_
+    datacol_cache[1]
+#else
+    datacol[index(i, j, k, strides)]
+#endif
+        = dcol[index(i, j, k, strides)];
         //ccol[index(i, j, k, strides)] = datacol[index(i, j, k, strides)];
         utens_stage_ref[index(i, j, k, strides)] =
             DTR_STAGE * (datacol[index(i, j, k, strides)] - u_pos[index(i, j, k, strides)]);
         // kbody
         for (k = domain.m_k - 2; k >= 0; --k) {
+#if USE_CACHE_
+            datacol_cache[0] =
+                dcol[index(i, j, k, strides)] - (ccol[index(i, j, k, strides)] * datacol_cache[1]);
+            //ccol[index(i, j, k, strides)] = datacol[index(i, j, k, strides)];
+            utens_stage_ref[index(i, j, k, strides)] =
+                DTR_STAGE * (datacol[0] - u_pos[index(i, j, k, strides)]);
+#else
             datacol[index(i, j, k, strides)] =
                 dcol[index(i, j, k, strides)] - (ccol[index(i, j, k, strides)] * datacol[index(i, j, k + 1, strides)]);
             //ccol[index(i, j, k, strides)] = datacol[index(i, j, k, strides)];
             utens_stage_ref[index(i, j, k, strides)] =
                 DTR_STAGE * (datacol[index(i, j, k, strides)] - u_pos[index(i, j, k, strides)]);
+#endif
         }
     }
 }
@@ -42,13 +60,13 @@ GT_FUNCTION void forward_sweep(const unsigned int i,
     const unsigned int block_size_j,
     const int ishift,
     const int jshift,
-    Real *ccol,
-    Real *dcol,
-    Real *wcon,
-    Real *u_stage,
-    Real *u_pos,
-    Real *utens,
-    Real *utens_stage_ref,
+    Real *__restrict__ ccol,
+    Real *__restrict__ dcol,
+    Real const *__restrict__ wcon,
+    Real const *__restrict__ u_stage,
+    Real const *__restrict__ u_pos,
+    Real *__restrict__ utens,
+    Real *__restrict__ utens_stage_ref,
     IJKSize const &domain,
     IJKSize const &strides) {
 
