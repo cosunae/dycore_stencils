@@ -6,7 +6,7 @@
 
 #define BLOCK_X_SIZE 32
 #define BLOCK_Y_SIZE 8
-#define BLOCK_Z_SIZE 4
+#define BLOCK_Z_SIZE 1 
 
 #define HALO_BLOCK_X_MINUS 1
 #define HALO_BLOCK_X_PLUS 1
@@ -16,7 +16,7 @@
 
 #define PADDED_BOUNDARY 1
 
-inline __device__ unsigned int cache_index(const unsigned int ipos, const unsigned int jpos) {
+inline __device__ unsigned int cache_index(const int ipos, const int jpos) {
     return (ipos + PADDED_BOUNDARY) +
            (jpos + HALO_BLOCK_Y_MINUS) * (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS);
 }
@@ -40,22 +40,23 @@ __global__ void cukernel(
     jblock_pos = -HALO_BLOCK_Y_MINUS - 1;
     if (threadIdx.y < jboundary_limit) {
         ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y - HALO_BLOCK_Y_MINUS + halo.m_j;
+        jpos = 2*blockIdx.y * BLOCK_Y_SIZE + threadIdx.y - HALO_BLOCK_Y_MINUS + halo.m_j;
         iblock_pos = threadIdx.x;
         jblock_pos = threadIdx.y - HALO_BLOCK_Y_MINUS;
     } else if (threadIdx.y < iminus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
         ipos = blockIdx.x * BLOCK_X_SIZE - PADDED_BOUNDARY + threadIdx.x % PADDED_BOUNDARY + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
+        jpos = 2*blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
         iblock_pos = -PADDED_BOUNDARY + (int)threadIdx.x % PADDED_BOUNDARY;
         jblock_pos = threadIdx.x / PADDED_BOUNDARY;
     } else if (threadIdx.y < iplus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
         ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
+        jpos = 2*blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
         iblock_pos = threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE;
         jblock_pos = threadIdx.x / PADDED_BOUNDARY;
     }
     
     int index_ = index(ipos, jpos, (BLOCK_Z_SIZE*blockIdx.z), strides);
+    int index2_ = index_+index(0, BLOCK_Y_SIZE, 0, strides);
 
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
@@ -66,7 +67,7 @@ __global__ void cukernel(
     __shared__ Real fly[CACHE_SIZE];
 
     for (int kpos = 0; kpos < BLOCK_Z_SIZE; ++kpos) {
-
+        // calulate for block 1
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
             lap[cache_index(iblock_pos, jblock_pos)] =
@@ -107,7 +108,59 @@ __global__ void cukernel(
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
+        // calulate for block 2
+        if (threadIdx.y == 0) {
+          //  lap[cache_index(iblock_pos, BLOCK_Y_SIZE)] = lap[cache_index(iblock_pos, 0)];
+          //  lap[cache_index(iblock_pos, BLOCK_Y_SIZE-1)] = lap[cache_index(iblock_pos, -1)];
+
+            fly[cache_index(iblock_pos, BLOCK_Y_SIZE-1)] = fly[cache_index(iblock_pos, -1)];
+            if (fly[cache_index(iblock_pos, -1)] != 0.0) printf("%i block(%i,%i) thread(%i,%i) (%i,%i), reads@%i, writes@%i, val %f\n",kpos, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, iblock_pos, jblock_pos, cache_index(iblock_pos, -1), cache_index(iblock_pos, BLOCK_Y_SIZE-1), fly[cache_index(iblock_pos, -1)]);
+        }        
+        __syncthreads();
+
+        if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+            lap[cache_index(iblock_pos, jblock_pos)] =
+                (Real)4 * __ldg(& in[index2_] ) -
+                ( __ldg(& in[index2_+index(1, 0 ,0, strides)] ) + __ldg(& in[index2_ - index(1, 0 ,0, strides)] ) +
+                    __ldg(&in[index2_+index(0, 1, 0, strides)]) + __ldg(&in[index2_ - index(0, 1, 0, strides)]));
+        }
+
+        __syncthreads();
+
+        if (is_in_domain< -1, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+            flx[cache_index(iblock_pos, jblock_pos)] =
+                lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
+            if (flx[cache_index(iblock_pos, jblock_pos)] *
+                    (__ldg(&in[index2_+index(1, 0, 0, strides)]) - __ldg(&in[index2_])) >
+                0) {
+                flx[cache_index(iblock_pos, jblock_pos)] = 0.;
+            }
+        }
+
+        if (is_in_domain< 0, 0, -1, -1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+            fly[cache_index(iblock_pos, jblock_pos)] =
+                lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
+            if (fly[cache_index(iblock_pos, jblock_pos)] *
+                    (__ldg(&in[index2_+index(0, 1, 0, strides)]) - __ldg(&in[index2_])) >
+                0) {
+                fly[cache_index(iblock_pos, jblock_pos)] = 0.;
+            }
+            printf("(%i,%i), reads@%i, val %f\n", iblock_pos, jblock_pos, cache_index(iblock_pos, jblock_pos), fly[cache_index(iblock_pos, jblock_pos)]);
+        }
+
+        __syncthreads();
+
+        if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+            out[index2_] =
+                __ldg(&in[index2_]) -
+                coeff[index2_] *
+                    (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
+                        fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
+        }
+
+        __syncthreads();
         index_ += index(0,0,1, strides);
+        index2_ += index(0,0,1, strides);
     }
 }
 
@@ -121,7 +174,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
                 (HALO_BLOCK_X_PLUS > 0 ? 1 : 0);
     threads.z = 1;
     blocks.x = (domain.m_i + BLOCK_X_SIZE - 1) / BLOCK_X_SIZE;
-    blocks.y = (domain.m_j + BLOCK_Y_SIZE - 1) / BLOCK_Y_SIZE;
+    blocks.y = (domain.m_j + BLOCK_Y_SIZE*2 - 1) / (BLOCK_Y_SIZE*2);
     blocks.z = (domain.m_k + BLOCK_Z_SIZE - 1) / BLOCK_Z_SIZE;
 
     IJKSize strides;
@@ -130,7 +183,6 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     Real *in = repo.field_d("u_in");
     Real *out = repo.field_d("u_out");
     Real *coeff = repo.field_d("coeff");
-
     if(time) time->start();
     cukernel<<< blocks, threads, 0 >>>(in, out, coeff, domain, halo, strides);
     if(time) time->pause();
