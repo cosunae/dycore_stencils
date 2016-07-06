@@ -34,9 +34,10 @@ struct verifier {
                     Real actual = actual_field[index(i,j,k,m_strides)];
 
                     if (!compare_below_threshold(expected, actual, m_precision)) {
+/*
                         std::cout << "Error in position " << i << " " << j << " " << k
                                   << " ; expected : " << expected << " ; actual : " << actual << "  "
-                                  << std::fabs((expected - actual) / (expected)) << std::endl;
+                                  << std::fabs((expected - actual) / (expected)) << std::endl;*/
                         verified=false;
                     }
                 }

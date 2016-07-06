@@ -57,19 +57,26 @@ TEST(HorizontalDiffusion, Test) {
     repo.update_device("u_out");
     repo.update_device("coeff");
 
-    launch_kernel(repo, NULL);
+    launch_kernel2(repo, NULL, 0);
 
     horizontal_diffusion_reference ref(repo);
     ref.generate_reference();
 
     repo.update_host("u_out");
-    verifier verif(domain, halo, 1e-11);
+    verifier verif(domain, halo, 1e-5);
     ASSERT_TRUE(verif.verify(repo.field_h("u_diff_ref"), repo.field_h("u_out")));
 
     timer_cuda time("vertical_advection");
-    for(unsigned int i=0; i < cNumBenchmarkRepetitions; ++i)
+    for(unsigned int i=0; i < 1; ++i)
     {
-        launch_kernel(repo, &time);
+        for(int j = 0;j<2;++j)
+            launch_kernel(repo, &time);
+    }
+
+    for(unsigned int i=0; i < kernel_count; ++i)
+    {
+        for(int j = 0;j<2;++j)
+            launch_kernel2(repo, &time, i);
     }
 
     std::cout << "Time for HORIZONTAL DIFFUSION: " << time.total_time() << std::endl;

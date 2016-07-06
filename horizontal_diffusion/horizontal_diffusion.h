@@ -8,3 +8,6 @@
 #include "../timer_cuda.hpp"
 
 void launch_kernel(repository& repo, timer_cuda*);
+void launch_kernel2(repository& repo, timer_cuda*, int);
+void launch_kernel3(repository& repo, timer_cuda*);
+extern int kernel_count;
