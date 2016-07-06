@@ -30,42 +30,42 @@ inline __device__ unsigned int cache_index_in(const unsigned int ipos, const uns
 __global__ void cukernel(
     Real *in, Real *out, Real *coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
 
-    unsigned int ipos, jpos;
-    int iblock_pos, jblock_pos;
-    const unsigned int jboundary_limit = BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS;
-    const unsigned int iminus_limit = jboundary_limit + HALO_BLOCK_X_MINUS;
-    const unsigned int iplus_limit = iminus_limit + HALO_BLOCK_X_PLUS;
+    // unsigned int ipos, jpos;
+    // int iblock_pos, jblock_pos;
+    // const unsigned int jboundary_limit = BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS;
+    // const unsigned int iminus_limit = jboundary_limit + HALO_BLOCK_X_MINUS;
+    // const unsigned int iplus_limit = iminus_limit + HALO_BLOCK_X_PLUS;
 
-    const unsigned int block_size_i =
-        (blockIdx.x + 1) * BLOCK_X_SIZE < domain.m_i ? BLOCK_X_SIZE : domain.m_i - blockIdx.x * BLOCK_X_SIZE;
-    const unsigned int block_size_j =
-        (blockIdx.y + 1) * BLOCK_Y_SIZE < domain.m_j ? BLOCK_Y_SIZE : domain.m_j - blockIdx.y * BLOCK_Y_SIZE;
+    // const unsigned int block_size_i =
+    //     (blockIdx.x + 1) * BLOCK_X_SIZE < domain.m_i ? BLOCK_X_SIZE : domain.m_i - blockIdx.x * BLOCK_X_SIZE;
+    // const unsigned int block_size_j =
+    //     (blockIdx.y + 1) * BLOCK_Y_SIZE < domain.m_j ? BLOCK_Y_SIZE : domain.m_j - blockIdx.y * BLOCK_Y_SIZE;
 
-    // set the thread position by default out of the block
-    iblock_pos = -HALO_BLOCK_X_MINUS - 1;
-    jblock_pos = -HALO_BLOCK_Y_MINUS - 1;
-    if (threadIdx.y < jboundary_limit) {
-        ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y - HALO_BLOCK_Y_MINUS + halo.m_j;
-        iblock_pos = threadIdx.x;
-        jblock_pos = threadIdx.y - HALO_BLOCK_Y_MINUS;
-    } else if (threadIdx.y < iminus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
-        ipos = blockIdx.x * BLOCK_X_SIZE - PADDED_BOUNDARY + threadIdx.x % PADDED_BOUNDARY + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
-        iblock_pos = -PADDED_BOUNDARY + (int)threadIdx.x % PADDED_BOUNDARY;
-        jblock_pos = threadIdx.x / PADDED_BOUNDARY;
-    } else if (threadIdx.y < iplus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
-        ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE + halo.m_i;
-        jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
-        iblock_pos = threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE;
-        jblock_pos = threadIdx.x / PADDED_BOUNDARY;
-    }
+    // // set the thread position by default out of the block
+    // iblock_pos = -HALO_BLOCK_X_MINUS - 1;
+    // jblock_pos = -HALO_BLOCK_Y_MINUS - 1;
+    // if (threadIdx.y < jboundary_limit) {
+    //     ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x + halo.m_i;
+    //     jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y - HALO_BLOCK_Y_MINUS + halo.m_j;
+    //     iblock_pos = threadIdx.x;
+    //     jblock_pos = threadIdx.y - HALO_BLOCK_Y_MINUS;
+    // } else if (threadIdx.y < iminus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
+    //     ipos = blockIdx.x * BLOCK_X_SIZE - PADDED_BOUNDARY + threadIdx.x % PADDED_BOUNDARY + halo.m_i;
+    //     jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
+    //     iblock_pos = -PADDED_BOUNDARY + (int)threadIdx.x % PADDED_BOUNDARY;
+    //     jblock_pos = threadIdx.x / PADDED_BOUNDARY;
+    // } else if (threadIdx.y < iplus_limit && threadIdx.x < BLOCK_Y_SIZE * PADDED_BOUNDARY) {
+    //     ipos = blockIdx.x * BLOCK_X_SIZE + threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE + halo.m_i;
+    //     jpos = blockIdx.y * BLOCK_Y_SIZE + threadIdx.x / PADDED_BOUNDARY + halo.m_j;
+    //     iblock_pos = threadIdx.x % PADDED_BOUNDARY + BLOCK_X_SIZE;
+    //     jblock_pos = threadIdx.x / PADDED_BOUNDARY;
+    // }
 
-    int index_ = index(ipos, jpos, 0, strides);
+    // int index_ = index(ipos, jpos, 0, strides);
 
     int ipos2 = blockIdx.x * BLOCK_X_SIZE + threadIdx.x;
     int jpos2 = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y;
-    int index2_ = index(ipos2, jpos2, 0, strides);
+    // int index2_ = index(ipos2, jpos2, 0, strides);
     int index_base = index(blockIdx.x * BLOCK_X_SIZE, blockIdx.y * BLOCK_Y_SIZE, 0, strides);
     // int index_Y = index(blockIdx.x * BLOCK_X_SIZE, blockIdx.y * BLOCK_Y_SIZE + BLOCK_Y_SIZE, 0, strides);
     // int index_X = index(blockIdx.x * BLOCK_X_SIZE + BLOCK_X_SIZE, blockIdx.y * BLOCK_Y_SIZE, 0, strides);
@@ -132,7 +132,7 @@ __global__ void cukernel(
                    in_s[acc+36] + in_s[acc-36]);
         }
 
-        bool halo1=ipos2>0 && jpos2>0 && ipos2 < domain.m_i-1 && jpos2 < domain.m_j-1;
+        // bool halo1=ipos2>0 && jpos2>0 && ipos2 < domain.m_i-1 && jpos2 < domain.m_j-1;
         if(threadIdx.x < 2 /*BLOCK_X_SIZE+halos - 32*/ // && halo1
             )
         {
@@ -293,11 +293,6 @@ __global__ void cukernel(
         }
 
 
-
-
-
-
-
         // if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
         //     // printf("cache_index_in(%d, %d) = %d\n", threadIdx.x, threadIdx.y, cache_index_in(threadIdx.x, threadIdx.y));
@@ -340,8 +335,9 @@ __global__ void cukernel(
         //             (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
         //                 fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         // }
+        // index_ += index(0,0,1, strides);
+
         __syncthreads();
-        index_ += index(0,0,1, strides);
         index_base += index(0,0,1, strides);
     }
 }
