@@ -222,12 +222,11 @@ __global__ void cukernel2_preload(
         return ;
     }
 
-    __shared__ Real in_s[tx*ty];
+
     __shared__ Real lap[tx*ty];
     __shared__ Real flx[tx*ty];
     __shared__ Real fly[tx*ty];
-
-    Real in_r;
+    Real *in_s = flx;
 
 
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
@@ -259,7 +258,7 @@ __global__ void cukernel2_preload(
 
         __syncthreads();
         if(localX>=2 && localY>=2 && localX < tx-2 && localY < ty-2) {
-            out[globalIdx] = in_r -
+            out[globalIdx] = in_r_00 -
                 coeff_r *
                 (flx[localIdx] - flx[localIdx-dx] +
                  fly[localIdx] - fly[localIdx-dy]);
