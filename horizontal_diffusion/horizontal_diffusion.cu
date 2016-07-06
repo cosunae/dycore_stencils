@@ -87,36 +87,39 @@ __global__ void cukernel(
 
         if(threadIdx.x < 32 && threadIdx.y < 8 && threadIdx.x>=0 && threadIdx.y>=0){
 
-            in_s[threadIdx.x + 36*threadIdx.y] = __ldg(& in[threadIdx.x + threadIdx.y*36]);
+            in_s[threadIdx.x + 36*threadIdx.y] = __ldg(& in[index(ipos2 , jpos2, kpos, strides)]);
             // printf("[%d, %d] %f = %f \n",  threadIdx.x, threadIdx.y, in_s[threadIdx.x + 36*threadIdx.y], __ldg(& in[threadIdx.x + threadIdx.y*36]));
         }
 
-        if(threadIdx.x < 4 /*BLOCK_X_SIZE+halos - 32*/)// && blockIdx.x * BLOCK_X_SIZE < domain.m_i && jpos_base < domain.m_j )
+        if(threadIdx.x < 4 /*BLOCK_X_SIZE+halos - 32*/)
         {
             acc=cache_index_in(BLOCK_X_SIZE+threadIdx.x, threadIdx.y);
-            in_s[acc] = __ldg(& in[index_base + index( BLOCK_X_SIZE+threadIdx.x, threadIdx.y, 0, strides)]);
+            in_s[acc] = __ldg(& in[ index( BLOCK_X_SIZE+ipos2, jpos2, kpos, strides)]);
         }
 
-        if(threadIdx.y<4 /*BLOCK_Y_SIZE+halos - 8*/)// && threadIdx.x+ipos2 < domain.m_i && BLOCK_Y_SIZE+jpos2+threadIdx.y < domain.m_j )
+        if(threadIdx.y<4/*4*/ /*BLOCK_Y_SIZE+halos - 8*/)
         {
             acc=cache_index_in(threadIdx.x, threadIdx.y+BLOCK_Y_SIZE);
-            in_s[acc] = __ldg(& in[index_base + index( threadIdx.x, BLOCK_Y_SIZE+threadIdx.y, 0, strides)]);
+            // printf("address: %d\n", index(ipos2, BLOCK_Y_SIZE+jpos2, kpos, strides));
+            in_s[acc] = __ldg(& in[index(ipos2, BLOCK_Y_SIZE+jpos2, kpos, strides)]);
+            // acc=cache_index_in(threadIdx.x, threadIdx.y+BLOCK_Y_SIZE);
+            // in_s[acc] = __ldg(& in[index_base + index( ipos2, BLOCK_Y_SIZE+jpos2, kpos, strides)]);
         }
 
         if(threadIdx.x<4 && threadIdx.y<4 )//&& BLOCK_X_SIZE+threadIdx.x+ipos2 < domain.m_i && BLOCK_Y_SIZE+jpos2+threadIdx.y < domain.m_j)
         {
             acc=cache_index_in(threadIdx.x+BLOCK_X_SIZE, threadIdx.y+BLOCK_Y_SIZE);
-            in_s[acc] = __ldg(& in[index_base + index(BLOCK_X_SIZE+threadIdx.x, BLOCK_Y_SIZE+threadIdx.y, 0, strides)]);
+            in_s[acc] = __ldg(& in[ index(BLOCK_X_SIZE+ipos2, BLOCK_Y_SIZE+jpos2, kpos, strides)]);
         }
 
         __syncthreads();
 
-        if(threadIdx.x==0 && threadIdx.y==0){
-            for(int i=0; i<36; ++i)
-                for(int j=0; j<12; ++j)
-                    if(in_s[i+j*36] != __ldg(& in[ i + j * 36]))
-                        printf("[%d,%d],%f = %f \n", i,j, in_s[i+j*36], __ldg(& in[ i + j * 36]));
-        }
+        // if(threadIdx.x==0 && threadIdx.y==0){
+        //     for(int i=0; i<36; ++i)
+        //         for(int j=0; j<12; ++j)
+        //             if(in_s[i+j*36] != __ldg(& in[ i + j * 36]))
+        //                 printf("[%d,%d],%f = %f \n", i,j, in_s[i+j*36], __ldg(& in[ i + j * 36]));
+        // }
 
         if(threadIdx.x < BLOCK_X_SIZE && threadIdx.y < BLOCK_Y_SIZE && threadIdx.x>=0 && threadIdx.y>=0){
 
@@ -172,12 +175,12 @@ __global__ void cukernel(
 
         __syncthreads();
 
-        if(threadIdx.x==0 && threadIdx.y==0){
-            for(int i=1; i<35; ++i)
-                for(int j=1; j<11; ++j)
-                    if(lap[i+j*36] != 4*in_s[i+j*36]-(in_s[(i+1)+j*36] + in_s[(i-1)+j*36] + in_s[i+(j+1)*36] + in_s[i+(j-1)*36]))
-                       printf("[%d,%d] %f = %f \n",i,j, lap[i+j*36], 4*in_s[i+j*36]-(in_s[(i+1)+j*36] + in_s[(i-1)+j*36] + in_s[i+(j+1)*36] + in_s[i+(j-1)*36]));
-        }
+        // if(threadIdx.x==0 && threadIdx.y==0){
+        //     for(int i=1; i<35; ++i)
+        //         for(int j=1; j<11; ++j)
+        //             if(lap[i+j*36] != 4*in_s[i+j*36]-(in_s[(i+1)+j*36] + in_s[(i-1)+j*36] + in_s[i+(j+1)*36] + in_s[i+(j-1)*36]))
+        //                printf("[%d,%d] %f = %f \n",i,j, lap[i+j*36], 4*in_s[i+j*36]-(in_s[(i+1)+j*36] + in_s[(i-1)+j*36] + in_s[i+(j+1)*36] + in_s[i+(j-1)*36]));
+        // }
 
 
         if(threadIdx.x < BLOCK_X_SIZE && threadIdx.y < BLOCK_Y_SIZE && threadIdx.x>=0 && threadIdx.y>=0){
@@ -202,7 +205,7 @@ __global__ void cukernel(
             }
         }
 
-        if(threadIdx.y < 1 /*BLOCK_X_SIZE+halos - 32*/ // && halo1
+        if(threadIdx.y < 2 /*BLOCK_X_SIZE+halos - 32*/ // && halo1
             )
         {
 
@@ -216,7 +219,57 @@ __global__ void cukernel(
         }
 
 
-        if(threadIdx.y < 1 && threadIdx.x < 1 // && halo1
+        if(threadIdx.y < 2 && threadIdx.x < 1 ) /*BLOCK_X_SIZE+halos - 32*/ // && halo1
+        {
+            acc = (threadIdx.x+1+BLOCK_X_SIZE) + (threadIdx.y+1+BLOCK_Y_SIZE)*36;
+            flx[acc] =
+                lap[acc+1] - lap[acc];
+            if (flx[acc] *
+                (in_s[acc+1] - in_s[acc]) > 0) {
+                flx[acc] = 0.;
+            }
+        }
+
+
+        //// FLUX Y
+
+        if(threadIdx.x < BLOCK_X_SIZE && threadIdx.y < BLOCK_Y_SIZE && threadIdx.x>=0 && threadIdx.y>=0){
+
+            acc = threadIdx.x+1 + (threadIdx.y+1)*36;
+            fly[acc] =
+                lap[acc+36] - lap[acc];
+            if (fly[acc] *
+                (in_s[acc+36] - in_s[acc]) > 0) {
+                fly[acc] = 0.;
+            }
+        }
+
+        if(threadIdx.x < 2 /*BLOCK_X_SIZE+halos*/)
+        {
+            acc = threadIdx.x+1+BLOCK_X_SIZE + (threadIdx.y+1) * 36;
+            fly[acc] =
+                lap[acc+36] - lap[acc];
+            if (fly[acc] *
+                (in_s[acc+36] - in_s[acc]) > 0) {
+                fly[acc] = 0.;
+            }
+        }
+
+        if(threadIdx.y < 1 /*BLOCK_X_SIZE+halos - 32*/ // && halo1
+            )
+        {
+
+            acc = threadIdx.x+1 + (threadIdx.y+1+BLOCK_Y_SIZE)*36;
+            fly[acc] =
+                lap[acc+36] - lap[acc];
+            if (fly[acc] *
+                (in_s[acc+36] - in_s[acc]) > 0) {
+                fly[acc] = 0.;
+            }
+        }
+
+
+        if(threadIdx.y < 1 && threadIdx.x < 2 // && halo1
             )
         {
             acc = (threadIdx.x+1+BLOCK_X_SIZE) + (threadIdx.y+1+BLOCK_Y_SIZE)*36;
@@ -228,11 +281,13 @@ __global__ void cukernel(
             }
         }
 
+        __syncthreads();
+
         if(threadIdx.x < BLOCK_X_SIZE && threadIdx.y < BLOCK_Y_SIZE && threadIdx.x>=0 && threadIdx.y>=0){
             acc = (threadIdx.x+2) + (threadIdx.y+2)*36;
-            out[acc] =
+            out[index(ipos2+2, jpos2+2, kpos, strides)] =
                 in_s[acc] -
-                coeff[acc] *
+                coeff[index(ipos2+2, jpos2+2, kpos, strides)] *
                 (flx[acc] - flx[acc-1] +
                  fly[acc] - fly[acc-36]);
         }
@@ -285,8 +340,9 @@ __global__ void cukernel(
         //             (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
         //                 fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         // }
-
+        __syncthreads();
         index_ += index(0,0,1, strides);
+        index_base += index(0,0,1, strides);
     }
 }
 
