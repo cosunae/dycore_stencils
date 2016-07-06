@@ -53,7 +53,7 @@ __global__ void cukernel(
     Real in_ip1,
         in_jp1,
         in_reg_,
-        in_center
+        in_center,
         lap_center;
     // if (ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>1 && threadIdx.x<BLOCK_X_SIZE+2 && threadIdx.y>1 && threadIdx.y<BLOCK_Y_SIZE+2 ) {
     //     coeff_rp1 = __ldg(REF coeff[index_]);
@@ -77,7 +77,6 @@ __global__ void cukernel(
             // }
             in_s[cache_index_in(threadIdx.x, threadIdx.y)] = __ldg(REF in[index_]);
             __syncthreads();
-            in_center = in_s[cache_index_in(threadIdx.x, threadIdx.y)];
             // in_im1 = in_s[cache_index_in(threadIdx.x-1, threadIdx.y)];
             // if(threadIdx.y>0)
             // in_jm1 = in_s[cache_index_in(threadIdx.x, threadIdx.y-1)];
@@ -89,6 +88,7 @@ __global__ void cukernel(
                 in_reg_ = __ldg(REF in[index_ + index(0, 0, 1, strides)]);
 
             if (ipos<domain.m_i && jpos<domain.m_j && threadIdx.x>0 && threadIdx.x<BLOCK_X_SIZE+3 && threadIdx.y>0 && threadIdx.y<BLOCK_Y_SIZE+3) {
+                in_center = in_s[cache_index_in(threadIdx.x, threadIdx.y)];
                 in_ip1 = in_s[cache_index_in(threadIdx.x+1, threadIdx.y)];
                 in_jp1 = in_s[cache_index_in(threadIdx.x, threadIdx.y+1)];
                 lap[cache_index(threadIdx.x, threadIdx.y)] =
@@ -152,8 +152,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     IJKSize halo = repo.halo();
 
     dim3 threads, blocks;
-    threads.x = 32// BLOCK_X_SIZE
-        ;
+    threads.x = BLOCK_X_SIZE +4;
     threads.y = BLOCK_Y_SIZE+4;//BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS + (HALO_BLOCK_X_MINUS > 0 ? 1 : 0) +
     //(HALO_BLOCK_X_PLUS > 0 ? 1 : 0);
     threads.z = 1;
