@@ -6,7 +6,7 @@
 
 #define BLOCK_X_SIZE 32
 #define BLOCK_Y_SIZE 8
-#define BLOCK_Z_SIZE 1 
+#define BLOCK_Z_SIZE 2 
 
 #define HALO_BLOCK_X_MINUS 1
 #define HALO_BLOCK_X_PLUS 1
@@ -107,18 +107,18 @@ __global__ void cukernel(
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
-
+        __syncthreads();
+ 
         // calulate for block 2
         if (threadIdx.y == 0) {
-          //  lap[cache_index(iblock_pos, BLOCK_Y_SIZE)] = lap[cache_index(iblock_pos, 0)];
-          //  lap[cache_index(iblock_pos, BLOCK_Y_SIZE-1)] = lap[cache_index(iblock_pos, -1)];
-
-            fly[cache_index(iblock_pos, BLOCK_Y_SIZE-1)] = fly[cache_index(iblock_pos, -1)];
-            if (fly[cache_index(iblock_pos, -1)] != 0.0) printf("%i block(%i,%i) thread(%i,%i) (%i,%i), reads@%i, writes@%i, val %f\n",kpos, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, iblock_pos, jblock_pos, cache_index(iblock_pos, -1), cache_index(iblock_pos, BLOCK_Y_SIZE-1), fly[cache_index(iblock_pos, -1)]);
+            lap[cache_index(iblock_pos,  0)] = lap[cache_index(iblock_pos, BLOCK_Y_SIZE)];
+            //lap[cache_index(iblock_pos, -1)] = lap[cache_index(iblock_pos, BLOCK_Y_SIZE-1)];
+            //fly[cache_index(iblock_pos, 0)] = fly[cache_index(iblock_pos, BLOCK_Y_SIZE)];
+            fly[cache_index(iblock_pos, -1)] = fly[cache_index(iblock_pos, BLOCK_Y_SIZE-1)];
+ //          if (kpos>=1) printf("%i block(%i,%i) thread(%i,%i) (%i,%i), reads@%i, writes@%i, val %f\n",kpos, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, iblock_pos, jblock_pos, cache_index(iblock_pos, -1), cache_index(iblock_pos, BLOCK_Y_SIZE-1), fly[cache_index(iblock_pos, -1)]);
         }        
-        __syncthreads();
 
-        if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+        if (is_in_domain< -1, 1, 0, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             lap[cache_index(iblock_pos, jblock_pos)] =
                 (Real)4 * __ldg(& in[index2_] ) -
                 ( __ldg(& in[index2_+index(1, 0 ,0, strides)] ) + __ldg(& in[index2_ - index(1, 0 ,0, strides)] ) +
@@ -137,7 +137,7 @@ __global__ void cukernel(
             }
         }
 
-        if (is_in_domain< 0, 0, -1, -1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
+        if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             fly[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (fly[cache_index(iblock_pos, jblock_pos)] *
@@ -145,7 +145,7 @@ __global__ void cukernel(
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
-            printf("(%i,%i), reads@%i, val %f\n", iblock_pos, jblock_pos, cache_index(iblock_pos, jblock_pos), fly[cache_index(iblock_pos, jblock_pos)]);
+//            if(kpos>=1) printf("%i block(%i,%i) thread(%i,%i) (%i,%i), reads@%i, val %f\n", kpos, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, iblock_pos, jblock_pos, cache_index(iblock_pos, jblock_pos), fly[cache_index(iblock_pos, jblock_pos)]);
         }
 
         __syncthreads();
@@ -158,7 +158,6 @@ __global__ void cukernel(
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
 
-        __syncthreads();
         index_ += index(0,0,1, strides);
         index2_ += index(0,0,1, strides);
     }
