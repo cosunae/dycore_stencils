@@ -59,19 +59,46 @@ __global__ void cukernel(
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
 // with same size. shared memory pressure should not be too high nevertheless
-#define CACHE_SIZE (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
+#define TOTAL_WARPS 12 //BLOCK_Y_SIZE + HALO_BLOCK_Y_MINUS + HALO_BLOCK_Y_PLUS + (HALO_BLOCK_X_MINUS > 0 ? 1 : 0) + (HALO_BLOCK_X_PLUS > 0 ? 1 : 0)
+#define TOTAL_BLOCK_X_SIZE 36 //BLOCK_X_SIZE+2*(HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS)
+#define CACHE_SIZE 432 // (TOTAL_BLOCK_X_SIZE) * (TOTAL_WARPS)
+
+    __shared__ Real in_s[CACHE_SIZE];
     __shared__ Real lap[CACHE_SIZE];
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
 
+    int ipos2 = blockIdx.x * BLOCK_X_SIZE + threadIdx.x;
+    int jpos2 = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y;
+    // int index2_ = index(ipos2, jpos2, 0, strides);
+
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+
+
+        // storing in in shared memory
+        in_s[threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y] = __ldg(& in[index(ipos2 , jpos2, kpos, strides)]);
+        // assert(index(ipos2 , jpos2, kpos, strides) == threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y);
+
+        if(threadIdx.x < TOTAL_BLOCK_X_SIZE-BLOCK_X_SIZE /*BLOCK_X_SIZE+halos - 32*/)
+        {
+            in_s[threadIdx.x + BLOCK_X_SIZE + TOTAL_BLOCK_X_SIZE*threadIdx.y] = __ldg(& in[ index( BLOCK_X_SIZE+ipos2, jpos2, kpos, strides)]);
+        }
+
+        __syncthreads();
+
+        // if(threadIdx.x==0 && threadIdx.y==0){
+        //     for(int i=0; i<TOTAL_BLOCK_X_SIZE; ++i)
+        //         for(int j=0; j<TOTAL_WARPS; ++j)
+        //             if(in_s[i+j*TOTAL_BLOCK_X_SIZE] != __ldg(& in[ index(i,j,0,strides) ]))
+        //                 printf("[%d,%d],%f = %f \n", i,j, in_s[i+j*TOTAL_BLOCK_X_SIZE], __ldg(& in[ index(i,j,kpos,strides)]));
+        // }
 
         if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
 
             lap[cache_index(iblock_pos, jblock_pos)] =
-                (Real)4 * __ldg(& in[index_] ) -
-                ( __ldg(& in[index_+index(1, 0,0, strides)] ) + __ldg(& in[index_ - index(1, 0,0, strides)] ) +
-                    __ldg(&in[index_+index(0, 1, 0, strides)]) + __ldg(&in[index_ - index(0, 1, 0, strides)]));
+                (Real)4 * in_s[iblock_pos+2 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE] -
+                ( in_s[iblock_pos+2+1 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE] + in_s[iblock_pos+2-1 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE] +
+                    in_s[iblock_pos+2 + (jblock_pos+2+1)*TOTAL_BLOCK_X_SIZE] + in_s[iblock_pos+2 + (jblock_pos+2-1)*TOTAL_BLOCK_X_SIZE]);
         }
 
         __syncthreads();
@@ -80,7 +107,7 @@ __global__ void cukernel(
             flx[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos + 1, jblock_pos)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (flx[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(1, 0, 0, strides)]) - __ldg(&in[index_])) >
+                    (in_s[iblock_pos+2+1 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE] - in_s[iblock_pos+2 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE]) >
                 0) {
                 flx[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -90,7 +117,7 @@ __global__ void cukernel(
             fly[cache_index(iblock_pos, jblock_pos)] =
                 lap[cache_index(iblock_pos, jblock_pos + 1)] - lap[cache_index(iblock_pos, jblock_pos)];
             if (fly[cache_index(iblock_pos, jblock_pos)] *
-                    (__ldg(&in[index_+index(0, 1, 0, strides)]) - __ldg(&in[index_])) >
+                    (in_s[iblock_pos+2 + (jblock_pos+2+1)*TOTAL_BLOCK_X_SIZE] - in_s[iblock_pos+2 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE]) >
                 0) {
                 fly[cache_index(iblock_pos, jblock_pos)] = 0.;
             }
@@ -100,11 +127,12 @@ __global__ void cukernel(
 
         if (is_in_domain< 0, 0, 0, 0 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
             out[index_] =
-                __ldg(&in[index_]) -
+                in_s[iblock_pos+2 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE] -
                 coeff[index_] *
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
         }
+        __syncthreads();
 
         index_ += index(0,0,1, strides);
     }
