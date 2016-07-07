@@ -165,8 +165,7 @@ __global__ void cukernel2_base(
     __shared__ Real fly[tx*ty];
 
 
-
-    for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+    for (int kpos = blockIdx.z; kpos < domain.m_k; kpos += gridDim.z) {
         int globalIdx = globalIdx0 + kpos*strides.m_k;
         Real in_r_00, in_r_p0, in_r_m0, in_r_0p, in_r_0m;
 
@@ -229,7 +228,7 @@ __global__ void cukernel2_preload(
     Real *in_s = flx;
 
 
-    for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+    for (int kpos = blockIdx.z; kpos < domain.m_k; kpos += gridDim.z) {
         int globalIdx = globalIdx0 + kpos*strides.m_k;
         Real in_r_00, in_r_p0, in_r_m0, in_r_0p, in_r_0m;
 
@@ -269,7 +268,7 @@ __global__ void cukernel2_preload(
 }
 
 template<int tx, int ty>
-__global__ void cukernel2(
+__global__ void cukernel2_buffered(
     const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
     const int baseX = (blockDim.x - 2*halo.m_i)*blockIdx.x;
     const int baseY = (blockDim.y - 2*halo.m_j)*blockIdx.y;
@@ -295,17 +294,20 @@ __global__ void cukernel2(
 
     Real in_r, lap_r, flx_r, fly_r, coeff_r;
 
-    in_s[localIdx] = in_r = in[globalIdx0];
-    coeff_r = coeff[globalIdx0];
+    int kpos = blockIdx.z;
+    int globalIdx = globalIdx0 + kpos*strides.m_k;
 
-    for (int kpos = 0; kpos < domain.m_k; ++kpos) {
-        int globalIdx = globalIdx0 + kpos*strides.m_k;
+    in_s[localIdx] = in_r = in[globalIdx];
+    coeff_r = coeff[globalIdx];
+
+    for (; kpos < domain.m_k; kpos += gridDim.z) {
+        globalIdx = globalIdx0 + kpos*strides.m_k;
 
         Real in_next = 0, coeff_next = 0;
 
-        if(kpos<domain.m_k-1) {
-            in_next = in[globalIdx + strides.m_k];
-            coeff_next = coeff[globalIdx + strides.m_k];
+        if(kpos + gridDim.z<domain.m_k) {
+            in_next = in[globalIdx + gridDim.z*strides.m_k];
+            coeff_next = coeff[globalIdx + gridDim.z*strides.m_k];
         }
         __syncthreads();
 
@@ -342,6 +344,73 @@ __global__ void cukernel2(
 }
 
 
+template<int tx, int ty>
+__global__ void cukernel2_preload2(
+    const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
+    const int baseX = (blockDim.x - 2*halo.m_i)*blockIdx.x;
+    const int baseY = (blockDim.y - 2*halo.m_j)*blockIdx.y;
+    const int localX = threadIdx.x;
+    const int localY = threadIdx.y;
+    const int globalX = baseX + localX;
+    const int globalY = baseY + localY;
+
+    const int dx = 1;
+    const int dy = blockDim.x;
+
+    const int localIdx = localX + localY*blockDim.x;
+    const int globalIdx0 = globalX*strides.m_i + globalY*strides.m_j;
+
+    if(globalX >= domain.m_i || globalY >= domain.m_j) {
+        return ;
+    }
+
+
+    __shared__ Real in_s[2][tx*ty];
+    __shared__ Real lap[2][tx*ty];
+    __shared__ Real flx[2][tx*ty];
+    __shared__ Real fly[2][tx*ty];
+
+
+
+    for (int kpos = blockIdx.z; kpos < domain.m_k; kpos += gridDim.z) {
+        int globalIdx = globalIdx0 + kpos*strides.m_k;
+        Real in_r_00, in_r_p0, in_r_m0, in_r_0p, in_r_0m;
+
+        in_s[0][localIdx] = in_r_00 = in[globalIdx];
+        Real coeff_r = coeff[globalIdx];
+        __syncthreads();
+
+        if(localX>=1 && localY>=1 && localX < tx-1 && localY < ty-1) {
+            in_r_p0 = in_s[0][localIdx+dx];
+            in_r_m0 = in_s[0][localIdx-dx];
+            in_r_0p = in_s[0][localIdx+dy];
+            in_r_0m = in_s[0][localIdx-dy];
+
+            lap[0][localIdx] = ((Real)4)*in_r_00 - (in_r_p0 + in_r_m0) - (in_r_0p + in_r_0m);
+        }
+        __syncthreads();
+        if(localX>=1 && localY>=1 && localX < tx-2 && localY < ty-1) {
+            flx[0][localIdx] = lap[0][localIdx+dx] - lap[0][localIdx];
+            if(flx[0][localIdx] * (in_r_p0 - in_r_00) > 0.0) { flx[0][localIdx] = 0.0; }
+        }
+
+        if(localX>=1 && localY>=1 && localX < tx-1 && localY < ty-2) {
+            fly[0][localIdx] = lap[0][localIdx+dy] - lap[0][localIdx];
+            if(fly[0][localIdx] * (in_r_0p - in_r_00) > 0.0) { fly[0][localIdx] = 0.0; }
+        }
+
+        __syncthreads();
+        if(localX>=2 && localY>=2 && localX < tx-2 && localY < ty-2) {
+            out[globalIdx] = in_r_00 -
+                coeff_r *
+                (flx[0][localIdx] - flx[0][localIdx-dx] +
+                 fly[0][localIdx] - fly[0][localIdx-dy]);
+        }
+
+    }
+
+}
+
 
 static const int tx = 36;
 static const int ty = 14;
@@ -349,10 +418,11 @@ static const int ty = 14;
 void (*kernels[])(const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) = {
     cukernel2_base<tx, ty>,
     cukernel2_preload<tx, ty>,
-    cukernel2<tx, ty>,
+    cukernel2_buffered<tx, ty>,
+    cukernel2_preload2<tx, ty>,
 };
 
-int kernel_count = 3;
+int kernel_count = 4;
 
 void launch_kernel2(repository &repo, timer_cuda* time, int version) {
     IJKSize domain = repo.domain();
@@ -364,7 +434,7 @@ void launch_kernel2(repository &repo, timer_cuda* time, int version) {
     threads.z = 1;
     blocks.x = (domain.m_i - 1) / (tx-4) + 1;
     blocks.y = (domain.m_j - 1) / (ty-4) + 1;
-    blocks.z = 1;
+    blocks.z = 8;
 
     IJKSize strides;
     compute_strides(domain, halo, strides);
@@ -378,6 +448,11 @@ void launch_kernel2(repository &repo, timer_cuda* time, int version) {
     kernels[version]<<< blocks, threads, 0 >>>(in, out, coeff, domain, halo, strides);
     if(time) time->pause();
 }
+
+
+
+
+
 
 
 template<unsigned int OX, unsigned int OY, unsigned int W> __device__ inline unsigned int X(unsigned int i) { return OX + i%W; }
