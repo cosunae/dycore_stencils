@@ -71,20 +71,22 @@ __global__ void cukernel(
     int ipos2 = blockIdx.x * BLOCK_X_SIZE + threadIdx.x;
     int jpos2 = blockIdx.y * BLOCK_Y_SIZE + threadIdx.y;
     // int index2_ = index(ipos2, jpos2, 0, strides);
+    int kpos=0;
+    // storing in in shared memory
+    in_s[threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y] = __ldg(& in[index(ipos2 , jpos2, kpos, strides)]);
+    // assert(index(ipos2 , jpos2, kpos, strides) == threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y);
+
+    if(threadIdx.x < TOTAL_BLOCK_X_SIZE-BLOCK_X_SIZE /*BLOCK_X_SIZE+halos - 32*/)
+    {
+        in_s[threadIdx.x + BLOCK_X_SIZE + TOTAL_BLOCK_X_SIZE*threadIdx.y] = __ldg(& in[ index( BLOCK_X_SIZE+ipos2, jpos2, kpos, strides)]);
+    }
+
+    __syncthreads();
 
     for (int kpos = 0; kpos < domain.m_k; ++kpos) {
 
-
-        // storing in in shared memory
-        in_s[threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y] = __ldg(& in[index(ipos2 , jpos2, kpos, strides)]);
-        // assert(index(ipos2 , jpos2, kpos, strides) == threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y);
-
-        if(threadIdx.x < TOTAL_BLOCK_X_SIZE-BLOCK_X_SIZE /*BLOCK_X_SIZE+halos - 32*/)
-        {
-            in_s[threadIdx.x + BLOCK_X_SIZE + TOTAL_BLOCK_X_SIZE*threadIdx.y] = __ldg(& in[ index( BLOCK_X_SIZE+ipos2, jpos2, kpos, strides)]);
-        }
-
-        __syncthreads();
+        Real in_reg=__ldg(& in[index(ipos2 , jpos2, kpos+1, strides)]);
+        Real in_reg2=__ldg(& in[ index( BLOCK_X_SIZE+ipos2, jpos2, kpos+1, strides)]);
 
         // if(threadIdx.x==0 && threadIdx.y==0){
         //     for(int i=0; i<TOTAL_BLOCK_X_SIZE; ++i)
@@ -131,6 +133,14 @@ __global__ void cukernel(
                 coeff[index_] *
                     (flx[cache_index(iblock_pos, jblock_pos)] - flx[cache_index(iblock_pos - 1, jblock_pos)] +
                         fly[cache_index(iblock_pos, jblock_pos)] - fly[cache_index(iblock_pos, jblock_pos - 1)]);
+        }
+
+        __syncthreads();
+        in_s[threadIdx.x + TOTAL_BLOCK_X_SIZE*threadIdx.y] = in_reg;
+
+        if(threadIdx.x < TOTAL_BLOCK_X_SIZE-BLOCK_X_SIZE /*BLOCK_X_SIZE+halos - 32*/)
+        {
+            in_s[threadIdx.x + BLOCK_X_SIZE + TOTAL_BLOCK_X_SIZE*threadIdx.y] = in_reg2;
         }
         __syncthreads();
 
