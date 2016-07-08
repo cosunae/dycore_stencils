@@ -61,7 +61,7 @@ __global__ void cukernel(
 // with same size. shared memory pressure should not be too high nevertheless
 #define CACHE_SIZE (BLOCK_X_SIZE + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE + 2)
 #define CACHE_SIZE_IN ( BLOCK_X_SIZE+2 + HALO_BLOCK_X_MINUS + HALO_BLOCK_X_PLUS) * (BLOCK_Y_SIZE+4)
-    __shared__ Real in_s[CACHE_SIZE_IN];
+    // __shared__ Real in_s[CACHE_SIZE_IN];
     __shared__ Real lap[CACHE_SIZE];
     __shared__ Real flx[CACHE_SIZE];
     __shared__ Real fly[CACHE_SIZE];
