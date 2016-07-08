@@ -5,7 +5,8 @@
 #include "../functions.hpp"
 
 #define BLOCK_X_SIZE 32
-#define BLOCK_Y_SIZE 10
+#define BLOCK_Y_SIZE 8
+#define BLOCK_Z_SIZE 4
 
 #define HALO_BLOCK_X_MINUS 1
 #define HALO_BLOCK_X_PLUS 1
@@ -54,7 +55,7 @@ __global__ void cukernel(
         jblock_pos = threadIdx.x / PADDED_BOUNDARY;
     }
 
-    int index_ = index(ipos, jpos, 0, strides);
+    int index_ = index(ipos, jpos, (BLOCK_Z_SIZE*blockIdx.z), strides);
 
 // flx and fly can be defined with smaller cache sizes, however in order to reuse the same cache_index function, I
 // defined them here
@@ -88,7 +89,7 @@ __global__ void cukernel(
     // in_center = __ldg(& in[index_]);
 
     if (is_in_domain< -1, 1, -1, 1 >(iblock_pos, jblock_pos, block_size_i, block_size_j)) {
-    for (int kpos = 0; kpos < domain.m_k; ++kpos) {
+    for (int kpos = 0; kpos < BLOCK_Z_SIZE; ++kpos) {
 
         // Real in_reg=__ldg(& in[index_] + index(0,0,1,strides));
         // Real in_reg2=__ldg(& in[ index( BLOCK_X_SIZE+ipos2, jpos2, kpos+1, strides)]);
@@ -99,7 +100,6 @@ __global__ void cukernel(
         //             if(in_s[i+j*TOTAL_BLOCK_X_SIZE] != __ldg(& in[ index(i,j,0,strides) ]))
         //                 printf("[%d,%d],%f = %f \n", i,j, in_s[i+j*TOTAL_BLOCK_X_SIZE], __ldg(& in[ index(i,j,kpos,strides)]));
         // }
-
 
             // in_center = in_s[iblock_pos+2 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE];
             // in_ip1 = in_s[iblock_pos+2+1 + (jblock_pos+2)*TOTAL_BLOCK_X_SIZE];
@@ -174,7 +174,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     threads.z = 1;
     blocks.x = (domain.m_i + BLOCK_X_SIZE - 1) / BLOCK_X_SIZE;
     blocks.y = (domain.m_j + BLOCK_Y_SIZE - 1) / BLOCK_Y_SIZE;
-    blocks.z = 1;
+    blocks.z = (domain.m_k + BLOCK_Z_SIZE - 1) / BLOCK_Z_SIZE;
 
     IJKSize strides;
     compute_strides(domain, halo, strides);
