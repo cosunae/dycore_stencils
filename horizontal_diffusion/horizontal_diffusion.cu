@@ -137,7 +137,7 @@ void launch_kernel(repository &repo, timer_cuda* time) {
     if(time) time->pause();
 }
 
-
+// memory based thread assignment. One thread per input element.
 template<int tx, int ty>
 __global__ void cukernel2_base(
     const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
@@ -164,9 +164,10 @@ __global__ void cukernel2_base(
     __shared__ Real flx[tx*ty];
     __shared__ Real fly[tx*ty];
 
-
+    // allows interleaved k parallelism by just setting blockDim.z to the desired amount of k parallelism.
     for (int kpos = blockIdx.z; kpos < domain.m_k; kpos += gridDim.z) {
         int globalIdx = globalIdx0 + kpos*strides.m_k;
+        // locals to avoid reloading from shmem
         Real in_r_00, in_r_p0, in_r_m0, in_r_0p, in_r_0m;
 
         if(localX>=1 && localY>=1 && localX < tx-1 && localY < ty-1) {
@@ -201,6 +202,7 @@ __global__ void cukernel2_base(
 
 }
 
+// preload input grid into shmem too
 template<int tx, int ty>
 __global__ void cukernel2_preload(
     const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
@@ -225,6 +227,7 @@ __global__ void cukernel2_preload(
     __shared__ Real lap[tx*ty];
     __shared__ Real flx[tx*ty];
     __shared__ Real fly[tx*ty];
+// in_s and flx are never used simultaneously so they can be aliased
     Real *in_s = flx;
 
 
@@ -267,6 +270,7 @@ __global__ void cukernel2_preload(
 
 }
 
+// buffer next level of inputs while the current one is being computed
 template<int tx, int ty>
 __global__ void cukernel2_buffered(
     const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
@@ -296,7 +300,7 @@ __global__ void cukernel2_buffered(
 
     int kpos = blockIdx.z;
     int globalIdx = globalIdx0 + kpos*strides.m_k;
-
+    // load first layer
     in_s[localIdx] = in_r = in[globalIdx];
     coeff_r = coeff[globalIdx];
 
@@ -304,7 +308,7 @@ __global__ void cukernel2_buffered(
         globalIdx = globalIdx0 + kpos*strides.m_k;
 
         Real in_next = 0, coeff_next = 0;
-
+        // load next layer if in range
         if(kpos + gridDim.z<domain.m_k) {
             in_next = in[globalIdx + gridDim.z*strides.m_k];
             coeff_next = coeff[globalIdx + gridDim.z*strides.m_k];
@@ -335,77 +339,9 @@ __global__ void cukernel2_buffered(
             out[globalIdx] = in_r - coeff_r *
                 ((flx_r - flx[localIdx-dx]) + (fly_r - fly[localIdx-dy]));
         }
-
+        // assign buffered inputs to local inputs
         in_s[localIdx] = in_r = in_next;
         coeff_r = coeff_next;
-
-    }
-
-}
-
-
-template<int tx, int ty>
-__global__ void cukernel2_preload2(
-    const Real *__restrict__ in, Real *out, const Real *__restrict__ coeff, const IJKSize domain, const IJKSize halo, const IJKSize strides) {
-    const int baseX = (blockDim.x - 2*halo.m_i)*blockIdx.x;
-    const int baseY = (blockDim.y - 2*halo.m_j)*blockIdx.y;
-    const int localX = threadIdx.x;
-    const int localY = threadIdx.y;
-    const int globalX = baseX + localX;
-    const int globalY = baseY + localY;
-
-    const int dx = 1;
-    const int dy = blockDim.x;
-
-    const int localIdx = localX + localY*blockDim.x;
-    const int globalIdx0 = globalX*strides.m_i + globalY*strides.m_j;
-
-    if(globalX >= domain.m_i || globalY >= domain.m_j) {
-        return ;
-    }
-
-
-    __shared__ Real in_s[2][tx*ty];
-    __shared__ Real lap[2][tx*ty];
-    __shared__ Real flx[2][tx*ty];
-    __shared__ Real fly[2][tx*ty];
-
-
-
-    for (int kpos = blockIdx.z; kpos < domain.m_k; kpos += gridDim.z) {
-        int globalIdx = globalIdx0 + kpos*strides.m_k;
-        Real in_r_00, in_r_p0, in_r_m0, in_r_0p, in_r_0m;
-
-        in_s[0][localIdx] = in_r_00 = in[globalIdx];
-        Real coeff_r = coeff[globalIdx];
-        __syncthreads();
-
-        if(localX>=1 && localY>=1 && localX < tx-1 && localY < ty-1) {
-            in_r_p0 = in_s[0][localIdx+dx];
-            in_r_m0 = in_s[0][localIdx-dx];
-            in_r_0p = in_s[0][localIdx+dy];
-            in_r_0m = in_s[0][localIdx-dy];
-
-            lap[0][localIdx] = ((Real)4)*in_r_00 - (in_r_p0 + in_r_m0) - (in_r_0p + in_r_0m);
-        }
-        __syncthreads();
-        if(localX>=1 && localY>=1 && localX < tx-2 && localY < ty-1) {
-            flx[0][localIdx] = lap[0][localIdx+dx] - lap[0][localIdx];
-            if(flx[0][localIdx] * (in_r_p0 - in_r_00) > 0.0) { flx[0][localIdx] = 0.0; }
-        }
-
-        if(localX>=1 && localY>=1 && localX < tx-1 && localY < ty-2) {
-            fly[0][localIdx] = lap[0][localIdx+dy] - lap[0][localIdx];
-            if(fly[0][localIdx] * (in_r_0p - in_r_00) > 0.0) { fly[0][localIdx] = 0.0; }
-        }
-
-        __syncthreads();
-        if(localX>=2 && localY>=2 && localX < tx-2 && localY < ty-2) {
-            out[globalIdx] = in_r_00 -
-                coeff_r *
-                (flx[0][localIdx] - flx[0][localIdx-dx] +
-                 fly[0][localIdx] - fly[0][localIdx-dy]);
-        }
 
     }
 
@@ -454,6 +390,9 @@ void launch_kernel2(repository &repo, timer_cuda* time, int version) {
 
 
 
+// decouple block size from computational region.
+// threads are assigned to loading and computation tasks in a i first order.
+// seems to be unconditionaly slower than above versions.
 
 template<unsigned int OX, unsigned int OY, unsigned int W> __device__ inline unsigned int X(unsigned int i) { return OX + i%W; }
 template<unsigned int OX, unsigned int OY, unsigned int W> __device__ inline unsigned int Y(unsigned int i) { return OY + i/W; }
